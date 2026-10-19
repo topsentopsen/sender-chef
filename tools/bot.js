@@ -25,11 +25,29 @@ function smart(s) {
   for (let m = 8 * 60; m <= 16 * 60; m += 30) { s.minute = m; sim.auctionTick(s); if (s.auction.bidder > 0 && s.money > s.auction.bid * 2 && s.auction.bid < s.auction.film.price) sim.bid(s); }
 }
 const out = {};
+const ranks = { passiv: [], einfach: [] };
 for (const strat of ['passiv', 'einfach']) for (let seed = 1; seed <= N; seed++) {
-  const s = sim.newGame(seed * 7919); let d = 0;
-  for (; d < 60 && !s.over; d++) { if (strat === 'einfach') smart(s); const r = sim.runEvening(s);
+  const s = sim.newGame(seed * 7919); let d = 0; let r1 = 0, days = 0;
+  for (; d < 60 && !s.over; d++) {
+    if (strat === 'einfach') smart(s);
+    const r = sim.runEvening(s);
+    if (r.rank === 1) r1++;
+    days++;
     if (V && strat === 'einfach') console.log(r.day, 'Platz', r.rank, r.totals.join('/'), 'Werbung', r.income, 'Basis', r.baseIncome, 'Strafe', r.penalties, 'Geld', s.money, 'Kredit', s.credit, 'Chef', s.mood, 'Image', s.image + '/' + s.rivals.map(x => x.image).join('/'), 'Herz', s.heart, 'Filme', s.films.length, s.over || '');
-    sim.nextDay(s); }
-  const k = strat + ':' + (s.over || 'offen'); (out[k] = out[k] || []).push(s.day);
+    sim.nextDay(s);
+  }
+  let reason = s.over || 'offen';
+  if (s.over === 'gefeuert') reason = s.image < 8 ? 'gefeuert:image' : 'gefeuert:mood';
+  const k = strat + ':' + reason; (out[k] = out[k] || []).push(s.day);
+  ranks[strat].push(days ? r1 / days : 0);
 }
-for (const k of Object.keys(out).sort()) { const v = out[k].sort((a, b) => a - b); console.log(k.padEnd(22), 'Anzahl', String(v.length).padStart(4), ' Endtag Median', v[v.length >> 1], ' min', v[0], ' max', v[v.length - 1]); }
+for (const k of Object.keys(out).sort()) {
+  const v = out[k].sort((a, b) => a - b);
+  const p = q => v[Math.min(v.length - 1, Math.floor(v.length * q))];
+  console.log(k.padEnd(22), 'Anzahl', String(v.length).padStart(4), ' Endtag Median', v[v.length >> 1], ' p10', p(0.1), ' p90', p(0.9), ' min', v[0], ' max', v[v.length - 1]);
+}
+for (const strat of ['passiv', 'einfach']) {
+  const a = ranks[strat].slice().sort((x, y) => x - y);
+  const med = a[a.length >> 1];
+  console.log(strat + ':Rang1-Anteil Median', (med * 100).toFixed(1) + '%');
+}

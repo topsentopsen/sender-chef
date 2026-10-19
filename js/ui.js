@@ -5,6 +5,12 @@
   const sim = () => SC.sim;
   const S = () => SC.S;
   const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const aud = (fn, ...a) => { try { if (SC.audio && typeof SC.audio[fn] === 'function') SC.audio[fn](...a); } catch (e) { /* Audio darf nie die Spielschleife killen */ } };
+  function syncSoundBtn() {
+    const b = $('btn-sound'); if (!b || !SC.audio) return;
+    b.textContent = SC.audio.isMuted() ? 'Ton aus' : 'Ton an';
+    const v = $('vol'); if (v) v.value = String(Math.round((SC.audio.getVolume() || 0) * 100));
+  }
   const money = n => (n < 0 ? '−' : '') + Math.abs(Math.round(n)).toLocaleString('de-DE') + ' €';
   const viewers = v => v >= 1000 ? (v / 1000).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Mio.' : Math.round(v) + ' Tsd.';
   const clock = m => String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + String(Math.floor(m % 60)).padStart(2, '0');
@@ -72,6 +78,7 @@
   UI.openRoom = function (room) {
     if (!S() || S().phase !== 'tag') { SC.building.showPlayer(); return; }
     UI.room = room; renderRoom(); $('room').classList.remove('hidden'); $('room').scrollTop = 0;
+    aud('jingle', 'door');
   };
   UI.closeRoom = function () {
     if (!UI.room) return;
@@ -265,6 +272,7 @@
     if (a === 'agency') r = sim().toggleAgency(s, b.dataset.k);
     if (a === 'gift') r = sim().buyGift(s, b.dataset.k);
     if (a === 'give') r = sim().giveGift(s, id);
+    if (r && r.ok && (a === 'buy' || a === 'sell' || a === 'sign' || a === 'news' || a === 'gift' || a === 'give' || a === 'bid')) aud('jingle', 'buy');
     if (r && r.ok && r.msg) { toast(r.msg); UI.refresh(); return; }
     if (r && !r.ok && r.msg) toast(r.msg, true); else if (r && r.ok) showLog();
     UI.refresh();
@@ -368,6 +376,7 @@
     s.minute = SC.EVENING;
     const res = sim().runEvening(s);
     sim().save(s);
+    aud('play', 'evening');
     showBroadcast(res);
   };
   function showBroadcast(res) {
@@ -396,6 +405,7 @@
     hr.views.forEach((v, i) => { r += '<td' + (v === max ? ' class="best"' : '') + '><div class="small">' + esc(hr.titles[i]) + '</div><span class="vbar" style="width:' + Math.round(v / 40) + 'px;background:' + ch[i].col + '"></span> ' + viewers(v) + '</td>'; });
     r += '<td>' + adResult(hr.ad) + '</td></tr>';
     $('tvtab').insertAdjacentHTML('beforeend', r);
+    if (hr.ad && !hr.ad.skip) aud('jingle', hr.ad.ok ? 'spotOk' : 'spotFail');
   }
   function drawTv(hr, ch) {
     const c = $('tvc'); if (!c) return; const g = c.getContext('2d');
@@ -441,8 +451,11 @@
     else h += '<p><button id="btn-next">Nächster Tag</button></p>';
     h += '</div>';
     openOverlay('bilanz', h);
+    aud('play', 'balance');
+    if (s.over === 'sieg') { aud('stop'); aud('jingle', 'win'); }
+    else if (s.over) { aud('stop'); aud('jingle', 'lose'); }
     drawBoss($('chefin-b'), s.mood);
-    if ($('btn-next')) $('btn-next').onclick = () => { sim().nextDay(s); sim().save(s); SC.building.reset(); showMorning(); };
+    if ($('btn-next')) $('btn-next').onclick = () => { sim().nextDay(s); sim().save(s); SC.building.reset(); aud('play', 'tower'); showMorning(); };
     if ($('btn-new2')) $('btn-new2').onclick = () => UI.newGame();
   }
   function endText(s) {
@@ -460,11 +473,12 @@
     h += '<p class="big">Du leitest den kleinen Fernsehsender <b style="color:#ffcc00">' + SC.PLAYER.name + '</b>. Kauf und ersteigere Filme, verkauf Werbung, schlag Blitz TV und Kanal Krawall im Image-Kampf, überlebe den grantigen ' + SC.BOSS.name + ' und gewinn das Herz von ' + SC.LOVE.name + '.</p>';
     h += '<p>' + (sv && !sv.over ? '<button id="t-cont">Weiterspielen (Tag ' + sv.day + ')</button> ' : '') + '<button id="t-new">Neues Spiel</button></p>';
     h += '<p class="dim">Klick im Hochhaus auf eine Tür oder nutze die Raumknöpfe unter dem Bild. Der Spielstand wird im Browser gespeichert.</p>';
-    h += '<p class="dim small">Inspiriert von Mad TV (1991). Eigenständiges Fanprojekt mit eigener Grafik und eigenen Texten, ohne Original-Inhalte. Version ' + SC.VERSION + '.</p></div>';
+    h += '<p class="dim small">Inspiriert von Mad TV (1991). Eigenständiges Fanprojekt mit eigener Grafik, eigenen Texten und selbst erzeugter Musik, ohne Original-Inhalte. Version ' + SC.VERSION + '.</p></div>';
     openOverlay('titel', h);
     drawLogo($('logo'));
-    $('t-new').onclick = () => UI.newGame();
-    if ($('t-cont')) $('t-cont').onclick = () => { SC.S = sv; afterLoad(); };
+    aud('play', 'title');
+    $('t-new').onclick = () => { aud('unlock'); aud('play', 'tower'); UI.newGame(); };
+    if ($('t-cont')) $('t-cont').onclick = () => { aud('unlock'); aud('play', 'tower'); SC.S = sv; afterLoad(); };
   };
   function moodBand(m) { return m >= 70 ? 'high' : m >= 35 ? 'mid' : 'low'; }
   function morningLine(s) {
@@ -503,7 +517,7 @@
   UI.newGame = function (seed) {
     if (UI.evTimer) { clearInterval(UI.evTimer); UI.evTimer = null; }
     if (UI.room) UI.closeRoom();
-    SC.S = sim().newGame(seed || (Date.now() & 0x7fffffff)); sim().save(S()); afterLoad(true);
+    SC.S = sim().newGame(seed || (Date.now() & 0x7fffffff)); sim().save(S()); aud('play', 'tower'); afterLoad(true);
   };
   function drawLogo(c) {
     if (!c) return; const g = c.getContext('2d');
@@ -517,7 +531,7 @@
   function showMenu() {
     if (UI.overlay) return;
     const h = '<div class="box"><h2>MENÜ</h2><p><button id="m-back">Zurück zum Spiel</button> <button id="m-save">Speichern</button> <button id="m-new">Neues Spiel</button></p>' +
-      '<p class="dim">Tastatur: Leertaste = Pause, 1/2/4 = Tempo, Esc = Raum verlassen.</p></div>';
+      '<p class="dim">Tastatur: Leertaste = Pause, 1/2/4 = Tempo, M = Ton, Esc = Raum verlassen.</p></div>';
     openOverlay('menu', h);
     $('m-back').onclick = closeOverlay;
     $('m-save').onclick = () => { toast(sim().save(S()) ? 'Gespeichert.' : 'Speichern fehlgeschlagen.', false); closeOverlay(); };
@@ -532,6 +546,15 @@
     $('btn-speed').onclick = () => { UI.speed = UI.speed === 1 ? 2 : UI.speed === 2 ? 4 : 1; };
     $('btn-evening').onclick = () => UI.startEvening();
     $('btn-menu').onclick = showMenu;
+    if (SC.audio) { SC.audio.init(); syncSoundBtn(); }
+    $('btn-sound').onclick = () => {
+      const wasReady = SC.audio && SC.audio.state && SC.audio.state().ready;
+      aud('unlock');
+      if (wasReady) aud('setMuted', !(SC.audio && SC.audio.isMuted()));
+      syncSoundBtn();
+      if (SC.audio && !SC.audio.isMuted() && !SC.audio.state().track) aud('play', S() && S().phase === 'tag' ? 'tower' : 'title');
+    };
+    $('vol').oninput = () => { aud('unlock'); aud('setVolume', Number($('vol').value) / 100); syncSoundBtn(); };
     $('bar').addEventListener('click', e => { const r = $('bar').getBoundingClientRect(); const x = (e.clientX - r.left) * 480 / r.width; if (x < 140) UI.tvChan = (UI.tvChan + 1) % 3; });
     const cv = $('cv');
     cv.addEventListener('mousemove', e => {
@@ -551,6 +574,7 @@
       if (e.key === ' ') { UI.paused = !UI.paused; e.preventDefault(); }
       if (e.key === '1') UI.speed = 1; if (e.key === '2') UI.speed = 2; if (e.key === '4') UI.speed = 4;
       if (e.key === 'Escape') UI.closeRoom();
+      if (e.key === 'm' || e.key === 'M') { aud('unlock'); aud('setMuted', !(SC.audio && SC.audio.isMuted())); syncSoundBtn(); e.preventDefault(); }
     });
     window.addEventListener('beforeunload', () => { if (S()) sim().save(S()); });
   };

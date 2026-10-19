@@ -237,7 +237,7 @@
     log(s, ev); return ev;
   }
 
-  const imgF = img => 0.9 + img * 0.003; // Image 0 = 0,9 · 33 = 1,0 · 100 = 1,2
+  const imgF = img => 0.94 + img * 0.002; // Image 0 = 0,94 · 33 ≈ 1,0 · 100 = 1,14 (v0.3 Gummiband)
   function attr(f, h, img, part, bonus) {
     if (!f) return 2; // Testbild
     const fit = SC.GENRES[f.genre].fit[h - 18];
@@ -275,7 +275,7 @@
       const fid = r.plan[h];
       const rf = fid ? r.films.find(x => x.id === fid) : null;
       const part = rf && r.plan[h - 1] === fid ? 1 : 0;
-      list.push({ f: rf, a: attr(rf, h, r.image, part, rBonus ? rBonus[i] : 1.05), part });
+      list.push({ f: rf, a: attr(rf, h, r.image, part, rBonus ? rBonus[i] : 1.0), part });
     });
     return list;
   }
@@ -292,7 +292,7 @@
       spotsOk: 0, spotsFail: 0, empty: 0, finished: [], failed: [], moodDelta: 0, heartDelta: 0, imageDelta: 0, autoCredit: 0, culture: 0 };
     res.newsCost = s.news.reduce((a, n) => a + n.cost, 0);
     const img0 = s.image, heart0 = s.heart;
-    const rBonus = s.rivals.map(() => 1 + rnd(s) * 0.1);
+    const rBonus = s.rivals.map(() => 0.95 + rnd(s) * 0.1);
     const aired = new Set(), rAired = new Set(), spotsToday = {};
     for (const h of SC.HOURS) {
       const l = hourAttrs(s, h, rBonus);
@@ -306,7 +306,7 @@
       // Image-Kampf: Stundensieger nimmt dem Letzten einen Punkt ab (Summe bleibt 100)
       const imgs = [s.image].concat(s.rivals.map(r => r.image));
       let bi = 0, wi = 0; views.forEach((v, i) => { if (v > views[bi]) bi = i; if (v < views[wi]) wi = i; });
-      if (bi !== wi && imgs[wi] > 0) { imgs[wi]--; imgs[bi]++; }
+      if (bi !== wi && imgs[wi] > 12 && imgs[bi] < 60) { imgs[wi]--; imgs[bi]++; }
       s.image = imgs[0]; s.rivals.forEach((r, i) => r.image = imgs[i + 1]);
       hr.best = bi; hr.imgs = imgs.slice();
       const p = s.plan[h];
@@ -357,10 +357,10 @@
       if (next < cur - 5) next = cur - 5;
       return clamp(next, 0, 100);
     }
-    s.heart = applyHeart(s.heart, [4, 2, 0][res.rank - 1] + 2 * res.culture, s.image);
+    s.heart = applyHeart(s.heart, [10, 3, 0][res.rank - 1] + 3 * res.culture, s.image);
     res.heartDelta = s.heart - heart0;
     res.heartCapHit = heart0 > heartCap(s.image) && res.heartDelta < 0;
-    s.rivals.forEach((r, i) => { const rk = order.indexOf(i + 1); r.heart = applyHeart(r.heart, [3, 1, 0][rk], r.image); });
+    s.rivals.forEach((r, i) => { const rk = order.indexOf(i + 1); r.heart = applyHeart(r.heart, [4, 1, 0][rk], r.image); });
 
     const T = SC.BOSS_TEXT; const lines = [pick(s, T.rank[res.rank])];
     if (res.empty) lines.push(T.empty);
@@ -388,13 +388,13 @@
     for (const k in s.giftUse) s.giftUse[k] = Math.max(0, s.giftUse[k] - 0.34); // Geschenke wirken nach ein paar Tagen wieder voll
     s.dealer.splice(0, 3);
     s.rivals.forEach(r => {
-      if (s.dealer.length && rnd(s) < 0.25) {
+      if (s.dealer.length && rnd(s) < 0.15) {
         const top3 = s.dealer.map((f, i) => [f.q, i]).sort((a, b) => b[0] - a[0]).slice(0, 3);
         const bi = pick(s, top3)[1];
         const f = s.dealer.splice(bi, 1)[0]; r.films.push(f);
         log(s, r.name + ' hat »' + f.title + '« beim Filmhändler weggeschnappt.');
       } else if (rnd(s) < 0.7) {
-        r.films.push(makeFilm(s, Math.min(40, 15 + 0.6 * s.day), Math.min(75, 45 + 1.2 * s.day)));
+        r.films.push(makeFilm(s, Math.min(34, 14 + 0.45 * s.day), Math.min(66, 42 + 1.0 * s.day)));
       }
       if (r.films.length > 14) { r.films.sort((a, b) => b.q * b.top - a.q * a.top); r.films.length = 14; }
     });

@@ -2,7 +2,7 @@
 'use strict';
 window.SC = window.SC || {};
 (function (SC) {
-  SC.VERSION = '0.2.1';
+  SC.VERSION = '0.3.0';
   SC.HOURS = [18, 19, 20, 21, 22, 23, 24]; // 24 = 0 Uhr
   SC.DAY_START = 8 * 60;      // 08:00
   SC.EVENING = 18 * 60;       // 18:00, dann beginnt der Sendeabend

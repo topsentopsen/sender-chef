@@ -7,6 +7,10 @@ Retro-Fernsehsender-Manager für den Browser im Amiga-Stil. **Inspiriert von Mad
 ## Worum geht es?
 Du leitest den kleinen Sender **Welle 7** in einem Hochhaus, in dem auch die Konkurrenz **Blitz TV** und **Kanal Krawall** sitzt. Bis 18 Uhr läufst du mit dem Aufzug durchs Haus, kaufst Filme, unterschreibst Werbeverträge und holst Nachrichten. Von 18 bis 24 Uhr wird gesendet, danach kommt die Tagesbilanz. Bring die Chefin mit Quoten auf Laune 100.
 
+## Stand
+
+**Version 0.3.0:** Balance glätten (Bot ~30 % Siege um Tag 11), prozedurale Hintergrundmusik (Web Audio, eigene Melodien), Ton-Knopf und Lautstärke.
+
 ## Technik
 - Reines HTML/CSS/JavaScript, kein Build, keine Pakete. Grafik prozedural per Canvas.
 - Spielstand im `localStorage` (Schlüssel `senderchef-save-v1`).

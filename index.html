@@ -20,6 +20,8 @@
       <button id="btn-pause">Pause</button>
       <button id="btn-speed">Tempo 1x</button>
       <button id="btn-evening">Sendeabend starten</button>
+      <button id="btn-sound" title="Ton an oder aus" aria-label="Ton">Ton an</button>
+      <input type="range" id="vol" min="0" max="100" value="50" title="Lautstärke" aria-label="Lautstärke">
       <button id="btn-menu">Menü</button>
     </div>
   </header>
@@ -30,13 +32,14 @@
   <canvas id="bar" width="480" height="64" title="Links: Fernseher (klicken zum Umschalten) · Mitte: Uhr, Geld, Herz, Image · Rechts: Familie Sofa"></canvas>
   <nav id="rooms"></nav>
   <footer id="ticker"></footer>
-  <p class="foot">Sender-Chef · inspiriert von Mad TV (1991) · eigenes Fanprojekt ohne Original-Inhalte</p>
+  <p class="foot">Sender-Chef · inspiriert von Mad TV (1991) · eigenes Fanprojekt ohne Original-Inhalte · Musik und Klänge selbst erzeugt</p>
 </div>
 <div id="overlay" class="hidden"></div>
 <script src="js/data.js"></script>
 <script src="js/sim.js"></script>
 <script src="js/building.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/audio.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

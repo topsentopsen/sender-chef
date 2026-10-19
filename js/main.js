@@ -26,6 +26,7 @@
   SC.debug = {
     state: () => SC.S,
     newGame: seed => SC.ui.newGame(seed),
-    evening: () => SC.ui.startEvening()
+    evening: () => SC.ui.startEvening(),
+    audio: () => SC.audio && SC.audio.state()
   };
 })(window.SC);
