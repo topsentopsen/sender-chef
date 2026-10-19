@@ -106,8 +106,10 @@
     let h = head('BÜRO · PROGRAMMPLAN');
     h += '<p class="dim">Jede Stunde von 18 bis 1 Uhr: Nachrichten, dann die Sendung, dann ein Werbespot. Jeder Film läuft höchstens einmal pro Abend, jeder Vertrag höchstens ' + SC.SPOTS_PER_DAY + ' Spots pro Abend. Ein Spot zählt nur, wenn die Zuschauer die Mindestquote erreichen. Prognose = Schätzung gegen das heutige Programm der Konkurrenz.</p>';
     h += '<table><tr><th>Zeit</th><th>News</th><th>Sendung</th><th>Passt</th><th>Prognose</th><th>Werbespot</th></tr>';
+    const adSlots = {};
     for (const hr of SC.HOURS) {
       const p = s.plan[hr] || {}; const f = p.film ? sim().filmById(s, p.film) : null;
+      if (p.ad) adSlots[p.ad] = (adSlots[p.ad] || 0) + 1;
       let o = '<option value="">– Testbild –</option>';
       s.films.forEach(x => {
         const bad = hr + x.len - 1 > SC.HOURS[SC.HOURS.length - 1];
@@ -116,11 +118,18 @@
       const fc = sim().forecast(s, hr);
       const ad = p.ad ? s.ads.find(a => a.id === p.ad) : null;
       const adOk = ad ? (fc >= ad.minV ? '<span class="good">✔</span>' : '<span class="bad">✘</span>') : '';
-      h += '<tr><td>' + hh(hr) + '</td><td class="small">' + (s.news.length ? '+' + Math.round((sim().newsBonus(s, hr) - 1) * 100) + ' %' : '<span class="dim">leer</span>') + '</td><td><select data-act="slot" data-h="' + hr + '">' + o + '</select>' + (p.part ? ' <span class="dim">(Teil 2)</span>' : '') + '</td>' +
+      const gcol = f ? SC.GENRES[f.genre].col : '';
+      const gbox = f ? '<span class="gbox" style="background:' + gcol + '" title="' + esc(SC.GENRES[f.genre].name) + '"></span>' : '<span class="gbox off" title="Testbild"></span>';
+      h += '<tr><td>' + hh(hr) + '</td><td class="small">' + (s.news.length ? '+' + Math.round((sim().newsBonus(s, hr) - 1) * 100) + ' %' : '<span class="dim">leer</span>') + '</td><td class="filmcell">' + gbox + '<select data-act="slot" data-h="' + hr + '">' + o + '</select>' + (p.part ? ' <span class="dim">(Teil 2)</span>' : '') + '</td>' +
         '<td>' + (f ? fitStars(f.genre, hr) : '') + '</td><td>' + viewers(fc) + ' ' + adOk + '</td>' +
         '<td><select data-act="ad" data-h="' + hr + '">' + adOptions(s, p.ad) + '</select></td></tr>';
     }
-    h += '</table><p class="dim">★★★ = Genre passt sehr gut zur Uhrzeit. Prozent = Aktualität: jede Ausstrahlung nutzt einen Film ab, pro Tag erholt er sich etwas. Nachrichten: ' + s.news.length + ' von ' + SC.MAX_NEWS + ' Meldungen auf der Tafel, sie wirken am stärksten am frühen Abend.</p>';
+    h += '</table>';
+    s.ads.forEach(a => {
+      if ((adSlots[a.id] || 0) > SC.SPOTS_PER_DAY)
+        h += '<p class="bad">Achtung: »' + esc(a.sponsor) + '« liegt ' + adSlots[a.id] + ' Mal im Plan, zählt aber nur ' + SC.SPOTS_PER_DAY + ' Spots pro Abend (Limit erreicht).</p>';
+    });
+    h += '<p class="dim">★★★ = Genre passt sehr gut zur Uhrzeit. Prozent = Aktualität: jede Ausstrahlung nutzt einen Film ab, pro Tag erholt er sich etwas. Nachrichten: ' + s.news.length + ' von ' + SC.MAX_NEWS + ' Meldungen auf der Tafel, sie wirken am stärksten am frühen Abend.</p>';
     h += '<h3>Laufende Werbeverträge</h3>' + adsTable(s.ads, s, false);
     h += '<h3>Dein Filmarchiv (' + s.films.length + ')</h3>' + filmTable(s.films, null);
     return h;
@@ -354,7 +363,7 @@
   function closeOverlay() { UI.overlay = null; $('overlay').classList.add('hidden'); $('overlay').innerHTML = ''; }
 
   UI.startEvening = function () {
-    const s = S(); if (!s || s.phase !== 'tag') return;
+    const s = S(); if (!s || s.phase !== 'tag' || UI.overlay) return;
     if (UI.room) UI.closeRoom();
     s.minute = SC.EVENING;
     const res = sim().runEvening(s);
@@ -375,11 +384,17 @@
     $('tvskip').onclick = () => { while (i < res.hours.length) { addTvRow(res.hours[i], ch); i++; } tick(); };
     tick(); UI.evTimer = setInterval(tick, step);
   }
+  function adResult(ad) {
+    if (!ad) return '–';
+    if (ad.ok) return '<span class="good">✔ ' + esc(ad.sponsor) + ' +' + money(ad.pay) + '</span>';
+    if (ad.skip) return '<span class="dim">✘ ' + esc(ad.sponsor) + ' (Limit erreicht)</span>';
+    return '<span class="bad">✘ ' + esc(ad.sponsor) + ' (zu wenig)</span>';
+  }
   function addTvRow(hr, ch) {
     const max = Math.max.apply(null, hr.views);
     let r = '<tr><td>' + hh(hr.h) + (hr.news ? '<div class="small dim">+News</div>' : '') + '</td>';
     hr.views.forEach((v, i) => { r += '<td' + (v === max ? ' class="best"' : '') + '><div class="small">' + esc(hr.titles[i]) + '</div><span class="vbar" style="width:' + Math.round(v / 40) + 'px;background:' + ch[i].col + '"></span> ' + viewers(v) + '</td>'; });
-    r += '<td>' + (hr.ad ? (hr.ad.ok ? '<span class="good">✔ ' + esc(hr.ad.sponsor) + ' +' + money(hr.ad.pay) + '</span>' : '<span class="bad">✘ ' + esc(hr.ad.sponsor) + ' (zu wenig)</span>') : '–') + '</td></tr>';
+    r += '<td>' + adResult(hr.ad) + '</td></tr>';
     $('tvtab').insertAdjacentHTML('beforeend', r);
   }
   function drawTv(hr, ch) {
@@ -420,13 +435,14 @@
     if (r.failed.length) h += '<p class="bad">Geplatzt: ' + r.failed.map(esc).join(', ') + '</p>';
     const sg = v => (v >= 0 ? '+' : '') + v;
     h += '<p>Image: ' + imgBar(s) + ' ' + s.image + ' (' + sg(r.imageDelta) + ') · <span class="heart">♥</span> ' + s.heart + ' (' + sg(r.heartDelta) + ')' + (r.culture ? ' · ' + r.culture + ' Kulturstunden' : '') + '</p>';
+    if (r.heartCapHit) h += '<p class="bad">Image zu niedrig, Lena wendet sich ab.</p>';
     h += '<div class="chefin"><canvas id="chefin-b" width="64" height="64"></canvas><div><p class="say">' + esc(SC.BOSS.name) + ': „' + esc(r.boss) + '“</p><p>Laune des Chefs: ' + s.mood + ' (' + sg(r.moodDelta) + ')</p></div></div>';
     if (s.over) h += endText(s);
     else h += '<p><button id="btn-next">Nächster Tag</button></p>';
     h += '</div>';
     openOverlay('bilanz', h);
     drawBoss($('chefin-b'), s.mood);
-    if ($('btn-next')) $('btn-next').onclick = () => { sim().nextDay(s); sim().save(s); SC.building.reset(); closeOverlay(); showLog(); toast('Tag ' + s.day + ' beginnt. Neue Filme, Werbung und Nachrichten sind da.'); };
+    if ($('btn-next')) $('btn-next').onclick = () => { sim().nextDay(s); sim().save(s); SC.building.reset(); showMorning(); };
     if ($('btn-new2')) $('btn-new2').onclick = () => UI.newGame();
   }
   function endText(s) {
@@ -450,15 +466,44 @@
     $('t-new').onclick = () => UI.newGame();
     if ($('t-cont')) $('t-cont').onclick = () => { SC.S = sv; afterLoad(); };
   };
-  function afterLoad() {
+  function moodBand(m) { return m >= 70 ? 'high' : m >= 35 ? 'mid' : 'low'; }
+  function morningLine(s) {
+    const T = SC.BOSS_TEXT.morning;
+    const last = s.history[s.history.length - 1];
+    const band = moodBand(s.mood);
+    if (!last) return T.day1[band];
+    return T.rank[last.rank][band];
+  }
+  function showMorning() {
+    const s = S();
+    const last = s.history[s.history.length - 1];
+    let h = '<div class="box"><h2>MORGENBESPRECHUNG</h2>';
+    h += '<div class="chefin"><canvas id="boss-m" width="64" height="64"></canvas><div>';
+    h += '<p class="say">„' + esc(morningLine(s)) + '“</p>';
+    if (last) h += '<p class="dim">Gestern: Platz ' + last.rank + ' · Laune: ' + s.mood + '</p>';
+    else h += '<p class="dim">Tag 1 · Laune: ' + s.mood + '</p>';
+    h += '</div></div>';
+    h += '<p><button id="btn-work">An die Arbeit</button></p></div>';
+    openOverlay('morgen', h);
+    drawBoss($('boss-m'), s.mood);
+    $('btn-work').onclick = () => {
+      closeOverlay();
+      showLog();
+      if (s.day === 1 && !s.history.length)
+        toast('Neues Spiel! Schau zuerst ins Büro (1. Etage) und zur Werbeagentur (2. Etage). Klick auf den linken Fernseher unten schaltet die Sender um.');
+      else
+        toast('Tag ' + s.day + ' beginnt. Neue Filme, Werbung und Nachrichten sind da.');
+    };
+  }
+  function afterLoad(briefing) {
     closeOverlay(); SC.building.reset(); showLog();
     if (S().phase === 'bilanz') showBilanz();
+    else if (briefing) showMorning();
   }
   UI.newGame = function (seed) {
     if (UI.evTimer) { clearInterval(UI.evTimer); UI.evTimer = null; }
     if (UI.room) UI.closeRoom();
-    SC.S = sim().newGame(seed || (Date.now() & 0x7fffffff)); sim().save(S()); afterLoad();
-    toast('Neues Spiel! Schau zuerst ins Büro (1. Etage) und zur Werbeagentur (2. Etage). Klick auf den linken Fernseher unten schaltet die Sender um.');
+    SC.S = sim().newGame(seed || (Date.now() & 0x7fffffff)); sim().save(S()); afterLoad(true);
   };
   function drawLogo(c) {
     if (!c) return; const g = c.getContext('2d');
@@ -501,7 +546,8 @@
       if (f !== null && x > 70 && x < 410) SC.building.goTo(f, Math.round(x), null);
     });
     document.addEventListener('keydown', e => {
-      if (e.target.tagName === 'SELECT') return;
+      if (e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
+      if (UI.overlay) return;
       if (e.key === ' ') { UI.paused = !UI.paused; e.preventDefault(); }
       if (e.key === '1') UI.speed = 1; if (e.key === '2') UI.speed = 2; if (e.key === '4') UI.speed = 4;
       if (e.key === 'Escape') UI.closeRoom();

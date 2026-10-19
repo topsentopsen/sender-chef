@@ -2,7 +2,7 @@
 'use strict';
 window.SC = window.SC || {};
 (function (SC) {
-  SC.VERSION = '0.2.0';
+  SC.VERSION = '0.2.1';
   SC.HOURS = [18, 19, 20, 21, 22, 23, 24]; // 24 = 0 Uhr
   SC.DAY_START = 8 * 60;      // 08:00
   SC.EVENING = 18 * 60;       // 18:00, dann beginnt der Sendeabend
@@ -134,6 +134,30 @@ window.SC = window.SC || {};
     empty: 'Und wieso lief bei uns das Testbild?! Testbilder bringen kein Geld!',
     penalty: 'Vertragsstrafen! Die Sponsoren rufen schon bei mir zu Hause an.',
     broke: 'Unser Konto ist im Minus. Die Bank lächelt nicht mehr.',
-    lowimage: 'Unser Image ist im Keller. Unter 8 Punkten sind Sie gefeuert, merken Sie sich das!'
+    lowimage: 'Unser Image ist im Keller. Unter 8 Punkten sind Sie gefeuert, merken Sie sich das!',
+    morning: {
+      day1: {
+        high: 'Sie sind der neue Chef. Läuft ja ganz passabel. Bleibt das so, oder muss ich schreien?',
+        mid: 'Neuer Tag, neue Quote. Ich will den ersten Platz sehen. Ab an den Schreibtisch!',
+        low: 'Sie sind der neue Chef. Keine Ausreden, keine Testbilder. 18 Uhr geht es los!'
+      },
+      rank: {
+        1: {
+          high: 'Gestern Platz eins. Hm. Ordentlich. Heute dasselbe, verstanden?',
+          mid: 'Platz eins gestern. Bilden Sie sich nichts ein. An die Arbeit!',
+          low: 'Platz eins, und ich bin trotzdem grantig. Ruhen Sie sich nicht auf den Lorbeeren aus!'
+        },
+        2: {
+          high: 'Gestern Platz zwei. Der erste Verlierer. Heute will ich Platz eins!',
+          mid: 'Mittelmaß gestern! Dafür bezahle ich Sie nicht. Ran an den Programmplan!',
+          low: 'Platz zwei und meine Laune sinkt. Noch so ein Abend, und Sie können packen!'
+        },
+        3: {
+          high: 'Letzter Platz gestern. Unerhört. Heute liefern Sie, oder es knallt!',
+          mid: 'Letzter Platz gestern! Wollen Sie mich ruinieren? Heute wird gearbeitet!',
+          low: 'Schon wieder Letzter. Die Konkurrenz lacht. Noch ein schlechter Tag, und Sie putzen die Aufzüge!'
+        }
+      }
+    }
   };
 })(window.SC);

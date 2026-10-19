@@ -196,7 +196,8 @@
     const use = s.giftUse[gid] || 0; s.giftUse[gid] = use + 1;
     const eff = Math.max(1, Math.round(g.heart / Math.pow(2, Math.floor(use))));
     const cap = heartCap(s.image);
-    const before = s.heart; s.heart = Math.min(cap, s.heart + eff);
+    const before = s.heart;
+    s.heart = Math.max(s.heart, Math.min(cap, s.heart + eff)); // Geschenk senkt das Herz nie, auch wenn der Image-Deckel darunter liegt
     const got = s.heart - before;
     let msg = got > 0 ? SC.LOVE.name.split(' ')[0] + ' freut sich über ' + g.name + ' (+' + got + ' Herz).' : 'Sie lächelt höflich. Mehr ist bei eurem Image gerade nicht drin.';
     if (use > 0 && got > 0) msg += ' Schon wieder ' + g.name + '? Das wirkt nicht mehr so gut.';
@@ -245,12 +246,24 @@
     return f.q * fit * fresh * age * imgF(img) * (part ? 0.93 : 1) * (bonus || 1);
   }
   function planRivals(s) {
+    const last = lastH();
     s.rivals.forEach(r => {
       r.plan = {}; const used = new Set();
       [20, 21, 19, 22, 18, 23, 24].forEach(h => {
+        if (r.plan[h]) return; // schon als Teil 2 eines 2-Stunden-Films belegt
         let best = null, bv = -1;
-        r.films.forEach(f => { if (used.has(f.id)) return; const v = attr(f, h, 33, 0, 1); if (v > bv) { bv = v; best = f; } });
-        if (best) { used.add(best.id); r.plan[h] = best.id; }
+        r.films.forEach(f => {
+          if (used.has(f.id)) return;
+          if (h + f.len - 1 > last) return;
+          if (f.len === 2 && r.plan[h + 1]) return;
+          const v = attr(f, h, 33, 0, 1);
+          if (v > bv) { bv = v; best = f; }
+        });
+        if (best) {
+          used.add(best.id);
+          r.plan[h] = best.id;
+          if (best.len === 2) r.plan[h + 1] = best.id;
+        }
       });
     });
   }
@@ -259,8 +272,10 @@
     const f = p.film ? filmById(s, p.film) : null;
     const list = [{ f, a: attr(f, h, s.image, p.part, newsBonus(s, h)), part: p.part || 0 }];
     s.rivals.forEach((r, i) => {
-      const rf = r.plan[h] ? r.films.find(x => x.id === r.plan[h]) : null;
-      list.push({ f: rf, a: attr(rf, h, r.image, 0, rBonus ? rBonus[i] : 1.05), part: 0 });
+      const fid = r.plan[h];
+      const rf = fid ? r.films.find(x => x.id === fid) : null;
+      const part = rf && r.plan[h - 1] === fid ? 1 : 0;
+      list.push({ f: rf, a: attr(rf, h, r.image, part, rBonus ? rBonus[i] : 1.05), part });
     });
     return list;
   }
@@ -335,10 +350,17 @@
     let md = [5, 1, -2][res.rank - 1] + Math.round((res.share - 0.333) * 15) - 2 * res.empty - res.spotsFail - 3 * res.failed.length;
     if (s.money < 0) md -= 5;
     s.mood = clamp(s.mood + md, 0, 100); res.moodDelta = md;
-    // Herz: Lena mag Kultur und Erfolg, aber nie mehr als das Image erlaubt
-    s.heart = clamp(s.heart + [4, 2, 0][res.rank - 1] + 2 * res.culture, 0, heartCap(s.image));
+    // Herz: Lena mag Kultur und Erfolg. Der Image-Deckel gilt, aber das Herz fällt höchstens um 5 pro Tag.
+    function applyHeart(cur, delta, img) {
+      const cap = heartCap(img);
+      let next = clamp(cur + delta, 0, cap);
+      if (next < cur - 5) next = cur - 5;
+      return clamp(next, 0, 100);
+    }
+    s.heart = applyHeart(s.heart, [4, 2, 0][res.rank - 1] + 2 * res.culture, s.image);
     res.heartDelta = s.heart - heart0;
-    s.rivals.forEach((r, i) => { const rk = order.indexOf(i + 1); r.heart = clamp(r.heart + [3, 1, 0][rk], 0, heartCap(r.image)); });
+    res.heartCapHit = heart0 > heartCap(s.image) && res.heartDelta < 0;
+    s.rivals.forEach((r, i) => { const rk = order.indexOf(i + 1); r.heart = applyHeart(r.heart, [3, 1, 0][rk], r.image); });
 
     const T = SC.BOSS_TEXT; const lines = [pick(s, T.rank[res.rank])];
     if (res.empty) lines.push(T.empty);
@@ -384,17 +406,44 @@
 
   // Spielstand
   function migrate(s) {
-    if (!s || typeof s !== 'object') return null;
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
     if (s.v === 1) { // v0.1: Image als Faktor, Chefin-Laune
+      if (!Array.isArray(s.rivals) || !Array.isArray(s.newsOffer)) return null;
       s.image = 33; s.heart = 0; s.gifts = []; s.giftUse = {}; s.agencies = { politik: true, showbiz: false, vermischt: false };
-      s.rivals.forEach((r, i) => { r.image = i === 0 ? 33 : 34; r.heart = 0; });
-      s.newsOffer.forEach(n => n.agency = agencyOf(n.cat)); s.auction = null; s.v = 2;
+      s.rivals.forEach((r, i) => { if (r && typeof r === 'object') { r.image = i === 0 ? 33 : 34; r.heart = 0; } });
+      s.newsOffer.forEach(n => { if (n) n.agency = agencyOf(n.cat); });
+      s.auction = null; s.v = 2;
       if (s.over === 'sieg') s.over = null;
     }
     if (s.v !== SAVE_V) return null;
     const need = ['films', 'dealer', 'adsOffer', 'ads', 'newsOffer', 'news', 'rivals', 'history', 'log'];
-    if (need.some(k => !Array.isArray(s[k])) || typeof s.money !== 'number' || typeof s.plan !== 'object') return null;
-    if (!s.stats) s.stats = { bought: 0, spots: 0, best: 0 };
+    if (need.some(k => !Array.isArray(s[k]))) return null;
+    if (s.plan == null || typeof s.plan !== 'object' || Array.isArray(s.plan)) return null;
+    if (!Number.isFinite(s.money) || !Number.isFinite(s.day) || !Number.isFinite(s.minute) || !Number.isFinite(s.mood)) return null;
+    if (!Number.isFinite(s.credit)) s.credit = 0;
+    if (!Number.isFinite(s.creditMax)) s.creditMax = 500000;
+    if (!Number.isFinite(s.image)) s.image = 33;
+    if (!Number.isFinite(s.heart)) s.heart = 0;
+    if (!Number.isFinite(s.nextId)) s.nextId = 1;
+    if (!Number.isFinite(s.rs)) s.rs = 1;
+    if (!s.titleUse || typeof s.titleUse !== 'object') s.titleUse = {};
+    if (!Array.isArray(s.gifts)) s.gifts = [];
+    if (!s.giftUse || typeof s.giftUse !== 'object') s.giftUse = {};
+    if (!s.agencies || typeof s.agencies !== 'object') s.agencies = {};
+    if (typeof s.agencies.politik !== 'boolean') s.agencies.politik = true;
+    if (typeof s.agencies.showbiz !== 'boolean') s.agencies.showbiz = false;
+    if (typeof s.agencies.vermischt !== 'boolean') s.agencies.vermischt = false;
+    if (!s.stats || typeof s.stats !== 'object') s.stats = { bought: 0, spots: 0, best: 0 };
+    ['bought', 'spots', 'best'].forEach(k => { if (!Number.isFinite(s.stats[k])) s.stats[k] = 0; });
+    if (typeof s.phase !== 'string') s.phase = 'tag';
+    if (s.rivals.length !== SC.RIVALS.length) return null;
+    for (let i = 0; i < s.rivals.length; i++) {
+      const r = s.rivals[i];
+      if (!r || typeof r !== 'object' || !Array.isArray(r.films)) return null;
+      if (!r.plan || typeof r.plan !== 'object' || Array.isArray(r.plan)) r.plan = {};
+      if (!Number.isFinite(r.image)) r.image = i === 0 ? 33 : 34;
+      if (!Number.isFinite(r.heart)) r.heart = 0;
+    }
     if (s.phase === 'tag' && !s.auction) newAuction(s);
     return s;
   }
@@ -406,6 +455,6 @@
   function clearSave() { try { localStorage.removeItem(KEY); } catch (e) { /* egal */ } }
 
   SC.sim = { newGame, runEvening, nextDay, setSlot, setAd, buyFilm, sellFilm, sellPrice, signAd, buyNews, toggleAgency, newsBonus,
-    takeCredit, repay, buyGift, giveGift, heartCap, bid, auctionTick, settleAuction, forecast, attr, filmById, slot,
+    takeCredit, repay, buyGift, giveGift, heartCap, bid, auctionTick, settleAuction, forecast, attr, filmById, slot, planRivals,
     save, load, migrate, clearSave, log, KEY };
 })(window.SC);

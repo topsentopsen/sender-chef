@@ -100,3 +100,105 @@ test('Keine Aktionen in der Bilanzphase', () => {
   assert.strictEqual(sim.buyFilm(s, s.dealer[0].id).ok, false);
   assert.strictEqual(sim.takeCredit(s, 1000).ok, false);
 });
+
+test('migrate hebt v1 auf v2', () => {
+  const raw = JSON.parse(JSON.stringify(sim.newGame(1)));
+  raw.v = 1;
+  delete raw.heart; delete raw.gifts; delete raw.giftUse; delete raw.agencies;
+  raw.image = 1.2;
+  raw.rivals.forEach(r => { delete r.image; delete r.heart; });
+  raw.newsOffer.forEach(n => { delete n.agency; });
+  raw.over = 'sieg';
+  const m = sim.migrate(raw);
+  assert.ok(m);
+  assert.strictEqual(m.v, 2);
+  assert.strictEqual(m.image, 33);
+  assert.strictEqual(m.heart, 0);
+  assert.deepStrictEqual(m.gifts, []);
+  assert.strictEqual(m.agencies.politik, true);
+  assert.strictEqual(m.over, null);
+  assert.strictEqual(m.rivals[0].image, 33);
+  assert.strictEqual(m.rivals[1].image, 34);
+  assert.ok(m.newsOffer[0].agency);
+});
+
+test('migrate lehnt kaputte Spielstände ab', () => {
+  assert.strictEqual(sim.migrate(null), null);
+  assert.strictEqual(sim.migrate({ v: 99, money: 1, plan: {}, films: [], dealer: [], adsOffer: [], ads: [], newsOffer: [], news: [], rivals: [], history: [], log: [] }), null);
+  const s = JSON.parse(JSON.stringify(sim.newGame(1)));
+  const a = JSON.parse(JSON.stringify(s)); a.plan = null;
+  assert.strictEqual(sim.migrate(a), null);
+  const b = JSON.parse(JSON.stringify(s)); b.money = NaN;
+  assert.strictEqual(sim.migrate(b), null);
+  const c = JSON.parse(JSON.stringify(s)); delete c.films;
+  assert.strictEqual(sim.migrate(c), null);
+  const d = JSON.parse(JSON.stringify(s)); d.rivals[0].films = null;
+  assert.strictEqual(sim.migrate(d), null);
+});
+
+test('migrate füllt fehlende Felder auf', () => {
+  const s = JSON.parse(JSON.stringify(sim.newGame(2)));
+  delete s.agencies; delete s.gifts; delete s.giftUse; delete s.titleUse; delete s.stats;
+  s.rivals[0].plan = null;
+  const m = sim.migrate(s);
+  assert.ok(m);
+  assert.deepStrictEqual(m.agencies, { politik: true, showbiz: false, vermischt: false });
+  assert.deepStrictEqual(m.gifts, []);
+  assert.ok(m.giftUse);
+  assert.ok(m.titleUse);
+  assert.ok(m.stats);
+  assert.deepStrictEqual(m.rivals[0].plan, {});
+});
+
+test('KI plant 2-Stunden-Filme über zwei Slots', () => {
+  const s = sim.newGame(1);
+  const r = s.rivals[0];
+  r.films.forEach(f => { f.len = 1; f.q = 10; });
+  r.films[0].len = 2; r.films[0].q = 99;
+  sim.planRivals(s);
+  const hs = SC.HOURS.filter(h => r.plan[h] === r.films[0].id);
+  assert.strictEqual(hs.length, 2);
+  assert.strictEqual(hs[1], hs[0] + 1);
+  assert.ok(hs[0] + 1 <= 24);
+  const res = sim.runEvening(s);
+  const part2 = res.hours.find(hr => hr.h === hs[1]);
+  assert.ok(part2.titles[1].includes('Teil 2'));
+});
+
+test('KI setzt keinen 2-Stunden-Film um 0 Uhr an', () => {
+  const s = sim.newGame(1);
+  s.rivals.forEach(r => r.films.forEach(f => { f.len = 2; f.q = 50; }));
+  sim.planRivals(s);
+  s.rivals.forEach(r => {
+    SC.HOURS.forEach(h => {
+      const id = r.plan[h]; if (!id) return;
+      const f = r.films.find(x => x.id === id);
+      if (!f || f.len !== 2) return;
+      const other = SC.HOURS.find(hh => hh !== h && r.plan[hh] === id);
+      assert.ok(other != null);
+      assert.strictEqual(Math.abs(other - h), 1);
+    });
+    assert.ok(!r.plan[24] || r.plan[23] === r.plan[24]);
+  });
+});
+
+test('überzählige Spots gelten als übersprungen', () => {
+  const s = sim.newGame(13); const ad = s.ads[0]; ad.minV = 1; ad.spots = 5; ad.deadline = 99;
+  SC.HOURS.forEach(h => sim.setAd(s, h, ad.id));
+  const res = sim.runEvening(s);
+  const skips = res.hours.filter(hr => hr.ad && hr.ad.skip);
+  assert.ok(skips.length >= SC.HOURS.length - 2);
+  assert.ok(skips.every(hr => hr.ad.ok === false));
+  assert.strictEqual(ad.done, 2);
+});
+
+test('Herz fällt durch Image-Deckel höchstens um 5', () => {
+  const s = sim.newGame(8);
+  s.heart = 80; s.image = 10;
+  s.rivals[0].image = 45; s.rivals[1].image = 45;
+  SC.HOURS.forEach(h => sim.setSlot(s, h, null));
+  const res = sim.runEvening(s);
+  assert.strictEqual(s.heart, 75);
+  assert.strictEqual(res.heartDelta, -5);
+  assert.ok(res.heartCapHit);
+});

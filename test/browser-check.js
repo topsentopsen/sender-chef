@@ -18,6 +18,8 @@ const out = process.env.SHOTS || '/workspace/sender-chef';
   await new Promise(r => setTimeout(r, 800));
   await page.screenshot({ path: out + '-1-titel.png' });
   await page.click('#t-new');
+  await page.waitForSelector('#btn-work', { timeout: 5000 });
+  await page.click('#btn-work');
   // zur Filmhandlung laufen (per Raumknopf), Film kaufen
   await page.click('#rooms button[data-room="filme"]');
   await page.waitForFunction(() => window.SC.ui.room === 'filme', { timeout: 20000 });
@@ -62,6 +64,7 @@ const out = process.env.SHOTS || '/workspace/sender-chef';
   await page.screenshot({ path: out + '-4-bilanz.png' });
   const day1 = await page.evaluate(() => ({ rank: window.SC.S.last.rank, totals: window.SC.S.last.totals, money: window.SC.S.money }));
   if (await page.$('#btn-next')) await page.click('#btn-next');
+  if (await page.$('#btn-work')) await page.click('#btn-work');
   const day = await page.evaluate(() => window.SC.S.day);
   // Neu laden: Spielstand muss erhalten bleiben
   await page.reload({ waitUntil: 'load' });
