@@ -2,18 +2,20 @@
 'use strict';
 window.SC = window.SC || {};
 (function (SC) {
-  SC.VERSION = '0.1.0';
-  SC.HOURS = [18, 19, 20, 21, 22, 23];
+  SC.VERSION = '0.2.0';
+  SC.HOURS = [18, 19, 20, 21, 22, 23, 24]; // 24 = 0 Uhr
   SC.DAY_START = 8 * 60;      // 08:00
   SC.EVENING = 18 * 60;       // 18:00, dann beginnt der Sendeabend
   SC.MIN_PER_SEC = 3;         // Spielminuten pro Echtsekunde bei Tempo 1
   // Potenzielle Zuschauer je Stunde in Tausend
-  SC.AUDIENCE = { 18: 3000, 19: 4500, 20: 6500, 21: 7000, 22: 5000, 23: 2800 };
+  SC.AUDIENCE = { 18: 3000, 19: 4500, 20: 6500, 21: 7000, 22: 5000, 23: 2800, 24: 1400 };
   SC.OFF = 110;               // Anziehungskraft von "Fernseher bleibt aus"
   SC.BASE_COST = 15000;       // Betriebskosten pro Tag
-  SC.FILM_COST = 500;         // Lizenz-/Lagerkosten pro Film und Tag
+  SC.FILM_COST = 300;         // Lizenz-/Lagerkosten pro Film und Tag
   SC.INTEREST = 0.01;         // Zinsen pro Tag auf den Kredit
   SC.MAX_ADS = 6;
+  SC.SPOTS_PER_DAY = 2;       // höchstens 2 Spots je Vertrag und Abend
+  SC.BASE_INCOME = 4;         // Grundeinnahme in Euro je 1000 Zuschauer
   SC.MAX_NEWS = 3;
   SC.PLAYER = { name: 'Welle 7', col: '#ffcc00' };
   SC.RIVALS = [
@@ -50,7 +52,7 @@ window.SC = window.SC || {};
     trick: { name: 'Zeichentrick', col: '#60ff60', long: false, fit: [1.3, 1.1, 0.7, 0.5, 0.3, 0.2], titles: [
       'Kalle Krake', 'Die Weltraumhamster', 'Bummi Bär im Zauberwald', 'Pixel und Bit', 'Die kleine Lokomotive Lotte', 'Rabe Rudi',
       'Abenteuer im Sockenland', 'Die Waldwichtel', 'Kapitän Knallbonbon', 'Schnecke Schnell', 'Das Drachenei', 'Fridolin Frosch'] },
-    doku: { name: 'Doku', col: '#80c080', long: false, fit: [0.9, 0.8, 0.7, 0.7, 0.7, 0.8], titles: [
+    doku: { name: 'Kultur', culture: true, col: '#80c080', long: false, fit: [0.9, 0.8, 0.7, 0.7, 0.7, 0.8], titles: [
       'Wunderwelt Wattenmeer', 'Geheimnis Kanalisation', 'Der Bau der Autobahn', 'Die Welt der Ameisen', 'Mythos Mettbrötchen', 'Vulkane hautnah',
       'Zugvögel', 'Abenteuer Alpen', 'Die Geschichte der Fernbedienung', 'Leben im Eis', 'Megastädte', 'Unser Wald'] },
     show: { name: 'Show', col: '#ff9000', long: false, fit: [0.9, 1.0, 1.05, 0.95, 0.85, 0.9], titles: [
@@ -58,6 +60,8 @@ window.SC = window.SC || {};
       'Gewinn oder Gummihuhn', 'Talk um Mitternacht', 'Lachen mit Lothar', 'Der goldene Topf', 'Disco Inferno 87', 'Show der Superlative'] }
   };
   SC.GENRE_IDS = Object.keys(SC.GENRES);
+  // 0-Uhr-Spalte ergänzen: Horror und Krimi halten, der Rest schläft ein
+  SC.GENRE_IDS.forEach(id => { const f = SC.GENRES[id].fit; f.push(id === 'horror' ? 1.4 : id === 'krimi' || id === 'scifi' ? 0.85 : Math.round(f[5] * 0.7 * 100) / 100); });
 
   SC.SPONSORS = [
     'Knusperflocken AG', 'Blitzblank Waschmittel', 'Autohaus Rasant', 'Brauerei Schaumkrone', 'Zahnpasta Strahlweiß',
@@ -66,6 +70,19 @@ window.SC = window.SC || {};
     'Kaugummi Kau-Kau', 'Versicherung Sorglos', 'Fahrradwerk Flitz'
   ];
 
+  SC.AGENCIES = {
+    politik: { name: 'Agentur Politik', fee: 0, cats: ['Politik', 'Wirtschaft', 'Lokales'] },
+    showbiz: { name: 'Agentur Showbiz', fee: 4000, cats: ['Klatsch', 'Sport'] },
+    vermischt: { name: 'Agentur Vermischtes', fee: 3000, cats: ['Kurioses', 'Tiere', 'Technik', 'Wetter', 'Wissenschaft'] }
+  };
+  SC.GIFTS = [
+    { id: 'blumen', name: 'Blumenstrauß', price: 3000, heart: 5 },
+    { id: 'pralinen', name: 'Pralinen', price: 6000, heart: 8 },
+    { id: 'parfum', name: 'Parfüm „Nachtfalter“', price: 15000, heart: 14 },
+    { id: 'konzert', name: 'Konzertkarten', price: 25000, heart: 20 }
+  ];
+  SC.LOVE = { name: 'Lena Lichtblick', job: 'Kulturredakteurin' };
+  SC.BOSS = { name: 'Direktor Knurrhahn' };
   // t = Titel, c = Kategorie, a = Grundwirkung
   SC.NEWS = [
     { t: 'Bürgermeister fällt in Stadtbrunnen', c: 'Lokales', a: 5 },
@@ -96,27 +113,27 @@ window.SC = window.SC || {};
 
   // Hochhaus: Etage 0 = Erdgeschoss. room = Raumschlüssel, deco = nur Dekoration
   SC.FLOORS = [
-    { name: 'Erdgeschoss', doors: [{ x: 130, room: 'lobby', label: 'PFÖRTNER' }, { x: 350, room: 'studio', label: 'STUDIO', deco: true }] },
+    { name: 'Erdgeschoss', doors: [{ x: 130, room: 'lobby', label: 'PFÖRTNER' }, { x: 350, room: 'kiosk', label: 'KIOSK' }] },
     { name: '1. Etage', doors: [{ x: 130, room: 'buero', label: 'BÜRO' }, { x: 350, room: 'filme', label: 'FILMHANDEL' }] },
     { name: '2. Etage', doors: [{ x: 130, room: 'werbung', label: 'WERBUNG' }, { x: 350, room: 'rival0', label: 'BLITZ TV', deco: true }] },
     { name: '3. Etage', doors: [{ x: 130, room: 'news', label: 'NACHRICHTEN' }, { x: 350, room: 'rival1', label: 'KRAWALL', deco: true }] },
-    { name: '4. Etage', doors: [{ x: 130, room: 'chefin', label: 'CHEFIN' }, { x: 350, room: 'bank', label: 'BANK' }] }
+    { name: '4. Etage', doors: [{ x: 130, room: 'chef', label: 'CHEF' }, { x: 350, room: 'lena', label: 'KULTUR' }] }
   ];
 
   SC.ROOM_NAMES = {
     lobby: 'Pförtner', buero: 'Büro (Programmplan)', filme: 'Filmhändler', werbung: 'Werbeagentur',
-    news: 'Nachrichtenstudio', chefin: 'Chefin', bank: 'Bank'
+    news: 'Nachrichtenstudio', chef: 'Chef & Kredit', lena: 'Lena (Kultur)', kiosk: 'Kiosk'
   };
 
-  SC.CHEFIN = {
-    name: 'Frau Dr. Vera Glanz',
+  SC.BOSS_TEXT = {
     rank: {
-      1: ['Platz eins! So will ich das sehen. Weiter so!', 'Endlich mal Quote! Ich bin beeindruckt.', 'Die Konkurrenz weint. Wunderbar.'],
-      2: ['Platz zwei. Ganz nett, aber ich will nach oben.', 'Mittelmaß ist nicht mein Ding. Da geht mehr.', 'Nicht schlecht, aber auch nicht gut.'],
-      3: ['Letzter Platz?! Das ist eine Katastrophe!', 'Haben Sie überhaupt einen Fernseher zu Hause?', 'So geht das nicht weiter. Ich beobachte Sie!']
+      1: ['Platz eins. Na also. Bilden Sie sich bloß nichts darauf ein.', 'Hm. Ordentliche Quote. Weitermachen, nicht nachlassen!', 'Die Konkurrenz schäumt. So mag ich das.'],
+      2: ['Platz zwei ist der erste Verlierer!', 'Mittelmaß! Dafür bezahle ich Sie nicht.', 'Nicht schlecht. Aber auch nicht gut. Eher schlecht.'],
+      3: ['Letzter Platz?! Wollen Sie mich ruinieren?', 'Haben Sie überhaupt einen Fernseher zu Hause?', 'Noch so ein Abend und Sie putzen die Aufzüge!']
     },
-    empty: 'Und warum lief bei uns das Testbild? Testbilder bringen keine Werbung!',
-    penalty: 'Vertragsstrafen! Die Sponsoren rufen schon bei mir an.',
-    broke: 'Unser Konto ist im Minus. Das gefällt der Bank gar nicht.'
+    empty: 'Und wieso lief bei uns das Testbild?! Testbilder bringen kein Geld!',
+    penalty: 'Vertragsstrafen! Die Sponsoren rufen schon bei mir zu Hause an.',
+    broke: 'Unser Konto ist im Minus. Die Bank lächelt nicht mehr.',
+    lowimage: 'Unser Image ist im Keller. Unter 8 Punkten sind Sie gefeuert, merken Sie sich das!'
   };
 })(window.SC);

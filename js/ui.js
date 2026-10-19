@@ -7,11 +7,13 @@
   const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const money = n => (n < 0 ? '−' : '') + Math.abs(Math.round(n)).toLocaleString('de-DE') + ' €';
   const viewers = v => v >= 1000 ? (v / 1000).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Mio.' : Math.round(v) + ' Tsd.';
-  const clock = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.floor(m % 60)).padStart(2, '0');
+  const clock = m => String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + String(Math.floor(m % 60)).padStart(2, '0');
   const qbar = q => '<span class="qbox"><span class="qbar" style="width:' + Math.round(q * 0.6) + 'px"></span></span> ' + q;
   const fitStars = (g, h) => { const v = SC.GENRES[g].fit[h - 18]; return v >= 1.1 ? '★★★' : v >= 0.9 ? '★★' : v >= 0.6 ? '★' : '–'; };
   const genre = g => '<span style="color:' + SC.GENRES[g].col + '">' + SC.GENRES[g].name + '</span>';
   const allChannels = () => [SC.PLAYER].concat(S().rivals);
+  const hh = h => String(h % 24).padStart(2, '0') + ':00';
+  const imgBar = s => { const c = allChannels(); const v = [s.image].concat(s.rivals.map(r => r.image)); return '<span class="imgbar">' + v.map((x, i) => '<span style="width:' + x + '%;background:' + c[i].col + '"></span>').join('') + '</span>'; };
 
   const UI = {
     paused: false, speed: 1, room: null, overlay: null, fast: /[?&]fast=1/.test(location.search), evTimer: null, toastT: 0
@@ -24,20 +26,21 @@
   let hudCache = '';
   UI.hud = function (dt) {
     const s = S(); if (!s) return;
-    const k = [s.day, Math.floor(s.minute), s.money, s.credit, s.mood, UI.paused, UI.speed, s.phase].join('|');
+    const k = [s.day, Math.floor(s.minute), s.money, s.credit, s.mood, s.image, s.heart, UI.paused, UI.speed, s.phase].join('|');
     if (k !== hudCache) {
       hudCache = k;
       $('hud-day').textContent = 'Tag ' + s.day;
       $('hud-clock').textContent = clock(s.minute);
       $('hud-money').textContent = money(s.money);
       $('hud-money').className = 'hud-item' + (s.money < 0 ? ' bad' : '');
-      $('hud-credit').textContent = 'Kredit ' + money(s.credit);
-      $('hud-mood').innerHTML = 'Chefin <span class="moodbar"><span style="width:' + s.mood + '%"></span></span> ' + s.mood;
+      $('hud-credit').innerHTML = 'Image ' + imgBar(s) + ' ' + s.image;
+      $('hud-mood').innerHTML = 'Chef <span class="moodbar"><span style="width:' + s.mood + '%"></span></span> ' + s.mood + ' · <span class="heart">♥</span> ' + s.heart;
       $('btn-pause').textContent = UI.paused ? 'Weiter' : 'Pause';
       $('btn-speed').textContent = 'Tempo ' + UI.speed + 'x';
       $('btn-evening').disabled = s.phase !== 'tag';
     }
     if (UI.toastT > 0) { UI.toastT -= dt || 0; if (UI.toastT <= 0) showLog(); }
+    UI.bar();
   };
   function showLog() { const s = S(); $('ticker').textContent = s && s.log[0] ? s.log[0] : ''; }
 
@@ -62,8 +65,7 @@
     SC.building.goTo(t.f, t.d.x, t.d.deco ? null : room);
   };
   function decoMsg(d) {
-    if (d.room === 'studio') toast('Das Studio ist nur für Technik und Moderatoren. Bitte nicht stören!');
-    else toast('Das Büro von ' + d.label + ' ist abgeschlossen. Spionage kommt in einer späteren Version.');
+    toast('Das Büro von ' + d.label + ' ist abgeschlossen. Spionage kommt in einer späteren Version.');
   }
 
   // ---------- Räume ----------
@@ -85,11 +87,13 @@
     else if (r === 'filme') h = roomFilme(s);
     else if (r === 'werbung') h = roomWerbung(s);
     else if (r === 'news') h = roomNews(s);
-    else if (r === 'chefin') h = roomChefin(s);
-    else if (r === 'bank') h = roomBank(s);
+    else if (r === 'chef') h = roomChef(s);
+    else if (r === 'lena') h = roomLena(s);
+    else if (r === 'kiosk') h = roomKiosk(s);
     else h = roomLobby(s);
     $('room').innerHTML = h;
-    if (r === 'chefin') drawChefin($('chefin-cv'), s.mood);
+    if (r === 'chef') drawBoss($('boss-cv'), s.mood);
+    if (r === 'lena') drawLena($('lena-cv'), s.heart);
   }
   UI.refresh = function () { if (UI.room) { const st = $('room').scrollTop; renderRoom(); $('room').scrollTop = st; } };
 
@@ -100,23 +104,23 @@
   }
   function roomBuero(s) {
     let h = head('BÜRO · PROGRAMMPLAN');
-    h += '<p class="dim">Plane den Abend von 18 bis 24 Uhr. Jeder Film läuft höchstens einmal pro Abend. Ein Werbespot zählt nur, wenn die Zuschauerzahl die Mindestquote des Sponsors erreicht. Prognose = Schätzung gegen das heutige Programm der Konkurrenz.</p>';
-    h += '<table><tr><th>Zeit</th><th>Sendung</th><th>Passt</th><th>Prognose</th><th>Werbung</th></tr>';
+    h += '<p class="dim">Jede Stunde von 18 bis 1 Uhr: Nachrichten, dann die Sendung, dann ein Werbespot. Jeder Film läuft höchstens einmal pro Abend, jeder Vertrag höchstens ' + SC.SPOTS_PER_DAY + ' Spots pro Abend. Ein Spot zählt nur, wenn die Zuschauer die Mindestquote erreichen. Prognose = Schätzung gegen das heutige Programm der Konkurrenz.</p>';
+    h += '<table><tr><th>Zeit</th><th>News</th><th>Sendung</th><th>Passt</th><th>Prognose</th><th>Werbespot</th></tr>';
     for (const hr of SC.HOURS) {
       const p = s.plan[hr] || {}; const f = p.film ? sim().filmById(s, p.film) : null;
       let o = '<option value="">– Testbild –</option>';
       s.films.forEach(x => {
-        const bad = hr + x.len - 1 > 23;
+        const bad = hr + x.len - 1 > SC.HOURS[SC.HOURS.length - 1];
         o += '<option value="' + x.id + '"' + (f && f.id === x.id ? ' selected' : '') + (bad ? ' disabled' : '') + '>' + esc(x.title) + ' · ' + SC.GENRES[x.genre].name + ' · Q' + x.q + ' · ' + x.len + 'h · ' + Math.round(x.top * 100) + '%</option>';
       });
       const fc = sim().forecast(s, hr);
       const ad = p.ad ? s.ads.find(a => a.id === p.ad) : null;
       const adOk = ad ? (fc >= ad.minV ? '<span class="good">✔</span>' : '<span class="bad">✘</span>') : '';
-      h += '<tr><td>' + hr + ':00</td><td><select data-act="slot" data-h="' + hr + '">' + o + '</select>' + (p.part ? ' <span class="dim">(Teil 2)</span>' : '') + '</td>' +
+      h += '<tr><td>' + hh(hr) + '</td><td class="small">' + (s.news.length ? '+' + Math.round((sim().newsBonus(s, hr) - 1) * 100) + ' %' : '<span class="dim">leer</span>') + '</td><td><select data-act="slot" data-h="' + hr + '">' + o + '</select>' + (p.part ? ' <span class="dim">(Teil 2)</span>' : '') + '</td>' +
         '<td>' + (f ? fitStars(f.genre, hr) : '') + '</td><td>' + viewers(fc) + ' ' + adOk + '</td>' +
         '<td><select data-act="ad" data-h="' + hr + '">' + adOptions(s, p.ad) + '</select></td></tr>';
     }
-    h += '</table><p class="dim">★★★ = Genre passt sehr gut zur Uhrzeit. Prozent = Aktualität: jede Ausstrahlung nutzt einen Film ab, pro Tag erholt er sich etwas. Nachrichten heute: +' + Math.round((sim().newsBonus(s) - 1) * 100) + ' % Zuschauer.</p>';
+    h += '</table><p class="dim">★★★ = Genre passt sehr gut zur Uhrzeit. Prozent = Aktualität: jede Ausstrahlung nutzt einen Film ab, pro Tag erholt er sich etwas. Nachrichten: ' + s.news.length + ' von ' + SC.MAX_NEWS + ' Meldungen auf der Tafel, sie wirken am stärksten am frühen Abend.</p>';
     h += '<h3>Laufende Werbeverträge</h3>' + adsTable(s.ads, s, false);
     h += '<h3>Dein Filmarchiv (' + s.films.length + ')</h3>' + filmTable(s.films, null);
     return h;
@@ -136,6 +140,14 @@
     let h = head('FILMHÄNDLER');
     h += '<p class="dim">„Frische Ware, Chef! Jeden Morgen kommt Neues rein, und die Konkurrenz kauft nachts gern das Beste weg.“</p>';
     h += filmTable(s.dealer, 'buy');
+    const a = s.auction;
+    if (a) {
+      const who = a.bidder === -1 ? 'noch kein Gebot' : a.bidder === 0 ? '<span class="good">Du bist vorn!</span>' : '<span class="bad">' + esc(s.rivals[a.bidder - 1].name) + ' führt</span>';
+      h += '<h3>Auktion des Tages (Zuschlag um 16:00 Uhr)</h3><table><tr><th>Film</th><th>Genre</th><th>Länge</th><th>Qualität</th><th>Gebot</th><th>Stand</th><th></th></tr>' +
+        '<tr><td>' + esc(a.film.title) + '</td><td>' + genre(a.film.genre) + '</td><td>' + a.film.len + ' h</td><td>' + qbar(a.film.q) + '</td><td>' + money(a.bid) + '</td><td>' + (a.done ? 'beendet' : who) + '</td>' +
+        '<td>' + (a.done ? '' : '<button data-act="bid"' + (a.bidder === 0 || s.minute >= a.ends ? ' disabled' : '') + '>' + (a.bidder === -1 ? 'Bieten' : '+' + money(a.step)) + '</button>') + '</td></tr></table>' +
+        '<p class="dim">Die Konkurrenz bietet im Laufe des Tages mit. Bezahlt wird beim Zuschlag.</p>';
+    }
     h += '<h3>Ankauf: deine Filme</h3><p class="dim">Der Händler zahlt je nach Aktualität 25 bis 45 % vom Neupreis.</p>' + filmTable(s.films, 'sell');
     return h;
   }
@@ -152,62 +164,80 @@
   }
   function roomWerbung(s) {
     let h = head('WERBEAGENTUR');
-    h += '<p class="dim">Jeder gesendete Spot mit genug Zuschauern bringt sofort Geld. Ist die Frist um und fehlen Spots, wird die Strafe fällig. Höchstens ' + SC.MAX_ADS + ' Verträge gleichzeitig.</p>';
+    h += '<p class="dim">Jeder gesendete Spot mit genug Zuschauern bringt sofort Geld. Ist die Frist um und fehlen Spots, wird die Strafe fällig. Höchstens ' + SC.MAX_ADS + ' Verträge gleichzeitig. Unter 15 Imagepunkten unterschreibt niemand.</p>';
     h += '<h3>Angebote</h3>' + adsTable(s.adsOffer, s, true);
     h += '<h3>Deine Verträge (' + s.ads.length + '/' + SC.MAX_ADS + ')</h3>' + adsTable(s.ads, s, false);
     return h;
   }
   function roomNews(s) {
     let h = head('NACHRICHTENSTUDIO');
-    h += '<p class="dim">Gute Nachrichten am Abend machen den ganzen Sender attraktiver. Bis zu ' + SC.MAX_NEWS + ' Meldungen pro Tag. Wirkung heute: <b>+' + Math.round((sim().newsBonus(s) - 1) * 100) + ' %</b> Zuschauer (höchstens +25 %).</p>';
+    h += '<p class="dim">Gute Nachrichten am Abend machen den ganzen Sender attraktiver. Bis zu ' + SC.MAX_NEWS + ' Meldungen pro Tag. Wirkung um 18 Uhr: <b>+' + Math.round((sim().newsBonus(s, 18) - 1) * 100) + ' %</b> Zuschauer (höchstens +25 %), danach veralten die Meldungen.</p>';
+    h += '<h3>Agenturen</h3><p>' + Object.keys(SC.AGENCIES).map(k => { const A = SC.AGENCIES[k]; return k === 'politik' ? '<span class="tag on">' + A.name + ' (frei)</span>' : '<button data-act="agency" data-k="' + k + '" class="' + (s.agencies[k] ? 'on' : '') + '">' + A.name + ': ' + (s.agencies[k] ? 'abonniert' : 'abonnieren') + ' (' + money(A.fee) + '/Tag)</button>'; }).join(' ') + '</p>';
     h += '<table><tr><th>Meldung</th><th>Ressort</th><th>Wirkung</th><th>Kosten</th><th></th></tr>';
     s.newsOffer.forEach(n => { h += '<tr><td>' + esc(n.title) + '</td><td>' + n.cat + '</td><td>' + '▮'.repeat(Math.ceil(n.appeal / 2)) + '</td><td>' + money(n.cost) + '</td><td><button data-act="news" data-id="' + n.id + '"' + (s.news.length >= SC.MAX_NEWS || s.money < n.cost ? ' disabled' : '') + '>Einkaufen</button></td></tr>'; });
     h += '</table><h3>Heute in der Sendung</h3>';
     h += s.news.length ? '<ul>' + s.news.map(n => '<li>' + esc(n.title) + '</li>').join('') + '</ul>' : '<p class="dim">Noch keine Meldungen gekauft.</p>';
     return h;
   }
-  function roomChefin(s) {
-    let h = head('CHEFIN · ' + SC.CHEFIN.name.toUpperCase());
+  function roomChef(s) {
+    let h = head('CHEFETAGE · ' + SC.BOSS.name.toUpperCase());
     const m = s.mood;
-    const say = m >= 80 ? 'Sie machen das hervorragend. Noch ein wenig, und ich mache Sie zum Intendanten!' :
-      m >= 55 ? 'Ordentlich. Aber ich will den ersten Platz sehen, jeden Abend.' :
-        m >= 30 ? 'Ich bin nicht zufrieden. Die Konkurrenz lacht über uns.' : 'Noch ein schlechter Abend, und Sie können Ihren Schreibtisch räumen!';
-    h += '<div class="chefin"><canvas id="chefin-cv" width="64" height="64"></canvas><div><p class="say">„' + say + '“</p>';
+    const say = m >= 80 ? 'Hmpf. Läuft ja. Gewöhnen Sie sich bloß nicht daran.' :
+      m >= 55 ? 'Ich will den ersten Platz sehen. Jeden. Einzelnen. Abend.' :
+        m >= 30 ? 'Die Konkurrenz lacht über uns! Und ich lache nicht mit!' : 'Noch ein schlechter Abend, und Sie können Ihren Schreibtisch räumen!';
+    h += '<div class="chefin"><canvas id="boss-cv" width="64" height="64"></canvas><div><p class="say">„' + say + '“</p>';
     h += '<p>Laune: <span class="moodbar big"><span style="width:' + m + '%"></span></span> ' + m + ' / 100</p>';
     if (s.history.length) { const l = s.history[s.history.length - 1]; h += '<p class="dim">Gestern: Platz ' + l.rank + ' mit ' + viewers(l.totals[0]) + ' Zuschauern insgesamt.</p>'; }
-    h += '</div></div><h3>Spielziel</h3><ul><li><b>Sieg:</b> Laune der Chefin auf 100 bringen.</li><li><b>Niederlage:</b> Laune fällt auf 0 (gefeuert) oder das Konto bleibt trotz vollem Kreditrahmen im Minus (pleite).</li>' +
-      '<li>Platz 1 am Abend: +7, Platz 2: +2, Platz 3: −3, dazu Marktanteil. Testbild, geplatzte Spots und Vertragsstrafen ärgern sie.</li></ul>';
-    return h;
-  }
-  function roomBank(s) {
-    let h = head('BANK');
-    h += '<p>Kontostand: <b>' + money(s.money) + '</b> · Kredit: <b>' + money(s.credit) + '</b> von ' + money(s.creditMax) + ' · Zinsen: ' + Math.round(SC.INTEREST * 100) + ' % pro Tag</p>';
+    h += '</div></div>';
+    h += '<h3>Kredit</h3><p>Kontostand: <b>' + money(s.money) + '</b> · Kredit: <b>' + money(s.credit) + '</b> von ' + money(s.creditMax) + ' · Zinsen ' + Math.round(SC.INTEREST * 100) + ' % pro Tag</p>';
     h += '<p><button data-act="credit" data-v="50000">+50.000 € leihen</button> <button data-act="credit" data-v="100000">+100.000 € leihen</button> ' +
       '<button data-act="repay" data-v="50000">50.000 € tilgen</button> <button data-act="repay" data-v="999999999">Alles tilgen</button></p>';
-    h += '<p class="dim">Rutscht das Konto am Abend ins Minus, gleicht die Bank automatisch mit Kredit aus, solange der Rahmen reicht.</p>';
-    h += '<h3>Letzte Tage</h3>';
-    if (!s.history.length) h += '<p class="dim">Noch keine Abrechnung.</p>';
-    else {
-      h += '<table><tr><th>Tag</th><th>Platz</th><th>Zuschauer</th><th>Werbung</th><th>Kontostand</th></tr>';
-      s.history.slice(-7).reverse().forEach(x => { h += '<tr><td>' + x.day + '</td><td>' + x.rank + '</td><td>' + viewers(x.totals[0]) + '</td><td>' + money(x.income) + '</td><td>' + money(x.money) + '</td></tr>'; });
+    h += '<p class="dim">Rutscht das Konto am Abend ins Minus, bucht der Chef automatisch Kredit nach, solange der Rahmen reicht.</p>';
+    h += '<h3>Spielregeln</h3><ul><li><b>Sieg:</b> Gewinne das Herz von ' + SC.LOVE.name + ' (100 ♥). Ihr Herz kann nie höher sein als dein Image mal zwei, du brauchst also mindestens 50 Imagepunkte.</li>' +
+      '<li><b>Image-Kampf:</b> Die drei Sender teilen sich 100 Imagepunkte. Wer eine Stunde gewinnt, nimmt dem Letzten einen Punkt ab.</li>' +
+      '<li><b>Niederlage:</b> Laune des Chefs 0 oder Image unter 8 (gefeuert), Konto im Minus bei vollem Kreditrahmen (pleite), oder ein Konkurrent erobert Lena zuerst.</li></ul>';
+    if (s.history.length) {
+      h += '<h3>Letzte Tage</h3><table><tr><th>Tag</th><th>Platz</th><th>Zuschauer</th><th>Einnahmen</th><th>Image</th><th>Kontostand</th></tr>';
+      s.history.slice(-7).reverse().forEach(x => { h += '<tr><td>' + x.day + '</td><td>' + x.rank + '</td><td>' + viewers(x.totals[0]) + '</td><td>' + money(x.income) + '</td><td>' + (x.image != null ? x.image : '–') + '</td><td>' + money(x.money) + '</td></tr>'; });
       h += '</table>';
     }
     return h;
   }
+  function roomLena(s) {
+    let h = head('KULTURREDAKTION · ' + SC.LOVE.name.toUpperCase());
+    const cap = sim().heartCap(s.image), hv = s.heart;
+    const say = hv >= 80 ? 'Du bist der Einzige in diesem Haus, der Kultur versteht.' : hv >= 50 ? 'Schön, dass du vorbeischaust. Lief gestern nicht eine Kultursendung bei euch?' :
+      hv >= 20 ? 'Ach, du schon wieder. Na gut, setz dich.' : 'Ich habe zu tun. Die Kunst wartet nicht.';
+    h += '<div class="chefin"><canvas id="lena-cv" width="64" height="64"></canvas><div><p class="say">„' + say + '“</p>';
+    h += '<p><span class="heart">♥</span> Herz: <span class="moodbar big heartbar"><span style="width:' + hv + '%"></span></span> ' + hv + ' / 100 <span class="dim">(Deckel durch dein Image: ' + cap + ')</span></p>';
+    h += '</div></div><h3>Geschenke in deiner Aktentasche</h3>';
+    h += s.gifts.length ? '<p>' + s.gifts.map((g, i) => '<button data-act="give" data-id="' + i + '">' + esc(SC.GIFTS.find(x => x.id === g).name) + ' überreichen</button>').join(' ') + '</p>' : '<p class="dim">Keine. Der Kiosk im Erdgeschoss hat etwas Passendes.</p>';
+    h += '<h3>Was Lena mag</h3><ul><li>Kultursendungen zwischen 19 und 24 Uhr (je Stunde +2 ♥), auch wenn sie wenig Quote bringen.</li><li>Erfolg: Platz 1 am Abend +4 ♥, Platz 2 +2 ♥.</li><li>Geschenke, aber nicht ständig dasselbe.</li></ul>';
+    h += '<h3>Konkurrenz um Lena</h3><table><tr><th>Sender</th><th>Herz</th></tr>' + allChannels().map((c, i) => '<tr><td style="color:' + c.col + '">' + esc(c.name) + '</td><td>' + (i === 0 ? s.heart : c.heart) + '</td></tr>').join('') + '</table>';
+    return h;
+  }
+  function roomKiosk(s) {
+    let h = head('KIOSK „ZUM GOLDENEN BILDSCHIRM“');
+    h += '<p class="say">„Na, was Schönes für die Dame aus der Kulturredaktion? Hab ich alles da!“</p>';
+    h += '<table><tr><th>Geschenk</th><th>Wirkung</th><th>Preis</th><th></th></tr>' + SC.GIFTS.map(g => '<tr><td>' + esc(g.name) + '</td><td class="heart">' + '♥'.repeat(Math.ceil(g.heart / 5)) + '</td><td>' + money(g.price) + '</td><td><button data-act="gift" data-k="' + g.id + '"' + (s.money < g.price || s.gifts.length >= 3 ? ' disabled' : '') + '>Kaufen</button></td></tr>').join('') + '</table>';
+    h += '<p class="dim">In der Aktentasche: ' + (s.gifts.length ? s.gifts.map(g => esc(SC.GIFTS.find(x => x.id === g).name)).join(', ') : 'nichts') + ' (höchstens 3). Überreichen in der Kulturredaktion, 4. Etage.</p>';
+    return h;
+  }
   function roomLobby(s) {
     let h = head('PFÖRTNER · SCHWARZES BRETT');
-    h += '<p class="say">„Morgen, Chef! Die Chefin sitzt ganz oben. Die Konkurrenz von Blitz TV und Kanal Krawall hat sich bei uns eingemietet, also Augen auf!“</p>';
-    h += '<h3>So läuft ein Tag</h3><ol><li>Bis 18:00 Uhr gehst du durchs Haus: Filme kaufen (1. Etage), Werbung unterschreiben (2.), Nachrichten einkaufen (3.).</li>' +
-      '<li>Im <b>Büro</b> legst du fest, was von 18 bis 24 Uhr läuft und welche Werbung in welche Stunde kommt.</li>' +
+    h += '<p class="say">„Morgen, Chef! ' + SC.BOSS.name + ' ist schon wieder schlecht gelaunt, und ' + SC.LOVE.name + ' sitzt ganz oben in der Kultur. Die von Blitz TV und Kanal Krawall schleichen auch hier rum, also Augen auf!“</p>';
+    h += '<h3>So läuft ein Tag</h3><ol>' +
+      '<li>Bis 18:00 Uhr gehst du durchs Haus: Filme kaufen und ersteigern (1. Etage), Werbung unterschreiben (2.), Nachrichten einkaufen (3.), Geschenke am Kiosk (EG).</li>' +
+      '<li>Im <b>Büro</b> legst du fest, was von 18 bis 1 Uhr läuft und welcher Spot nach der Sendung kommt.</li>' +
       '<li>Um 18:00 Uhr (oder per „Sendeabend starten“) wird gesendet. Danach kommt die Tagesbilanz.</li>' +
-      '<li>Ziel: die Chefin (4. Etage) mit Quoten begeistern, bis ihre Laune 100 erreicht.</li></ol>';
+      '<li>Ziel: Image hochkämpfen und das Herz von ' + SC.LOVE.name + ' (4. Etage) gewinnen. Den grantigen Chef nebenan bei Laune halten.</li></ol>';
     h += '<h3>Konkurrenz</h3><table><tr><th>Sender</th><th>Filme</th><th>Image</th><th>Gestern</th></tr>';
     const l = s.history[s.history.length - 1];
     allChannels().forEach((c, i) => {
       const img = i === 0 ? s.image : c.image, n = i === 0 ? s.films.length : c.films.length;
-      h += '<tr><td style="color:' + c.col + '">' + esc(c.name) + '</td><td>' + n + '</td><td>' + Math.round(img * 100) + ' %</td><td>' + (l ? viewers(l.totals[i]) : '–') + '</td></tr>';
+      h += '<tr><td style="color:' + c.col + '">' + esc(c.name) + '</td><td>' + n + '</td><td>' + img + ' Punkte</td><td>' + (l ? viewers(l.totals[i]) : '–') + '</td></tr>';
     });
-    h += '</table><h3>Meldungen</h3><ul class="log">' + s.log.slice(0, 10).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
+    h += '</table><p>Image: ' + imgBar(s) + '</p><h3>Meldungen</h3><ul class="log">' + s.log.slice(0, 10).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
     return h;
   }
 
@@ -222,6 +252,11 @@
     if (a === 'news') r = sim().buyNews(s, id);
     if (a === 'credit') r = sim().takeCredit(s, Number(b.dataset.v));
     if (a === 'repay') r = sim().repay(s, Number(b.dataset.v));
+    if (a === 'bid') r = sim().bid(s);
+    if (a === 'agency') r = sim().toggleAgency(s, b.dataset.k);
+    if (a === 'gift') r = sim().buyGift(s, b.dataset.k);
+    if (a === 'give') r = sim().giveGift(s, id);
+    if (r && r.ok && r.msg) { toast(r.msg); UI.refresh(); return; }
     if (r && !r.ok && r.msg) toast(r.msg, true); else if (r && r.ok) showLog();
     UI.refresh();
   }
@@ -233,7 +268,7 @@
     UI.refresh();
   }
 
-  function drawChefin(c, mood) {
+  function drawLena(c, mood) {
     if (!c) return; const g = c.getContext('2d');
     const R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
     R(0, 0, 64, 64, '#0055aa'); R(0, 48, 64, 16, '#002a66');
@@ -250,6 +285,68 @@
     else { R(26, 32, 12, 2, '#c02030'); R(25, 33, 2, 1, '#c02030'); R(37, 33, 2, 1, '#c02030'); }
     R(16, 26, 3, 4, '#ffd040'); R(45, 26, 3, 4, '#ffd040'); // Ohrringe
   }
+
+  function drawBoss(c, mood) {
+    if (!c) return; const g = c.getContext('2d');
+    const R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+    R(0, 0, 64, 64, '#552200'); R(0, 48, 64, 16, '#331100');
+    R(10, 42, 44, 22, '#303848'); R(28, 42, 8, 22, '#fff'); R(30, 44, 4, 18, '#c02020');
+    R(18, 10, 28, 30, mood < 30 ? '#f09070' : '#e8b080');
+    R(18, 8, 28, 5, '#bbb'); R(16, 12, 4, 12, '#bbb'); R(44, 12, 4, 12, '#bbb'); R(24, 6, 16, 3, '#e8b080');
+    R(22, 18, 8, 2, '#333'); R(34, 18, 8, 2, '#333');
+    if (mood < 55) { R(22, 17, 3, 1, '#333'); R(39, 17, 3, 1, '#333'); }
+    R(24, 21, 4, 3, '#fff'); R(36, 21, 4, 3, '#fff'); R(25, 22, 2, 2, '#000'); R(37, 22, 2, 2, '#000');
+    R(30, 24, 4, 6, '#d09060'); R(22, 31, 20, 3, '#777');
+    if (mood >= 70) { R(26, 35, 12, 2, '#802020'); R(25, 34, 2, 1, '#802020'); R(37, 34, 2, 1, '#802020'); }
+    else { R(26, 35, 12, 2, '#802020'); R(25, 36, 2, 1, '#802020'); R(37, 36, 2, 1, '#802020'); }
+    R(48, 50, 8, 9, '#f0f0f0'); R(56, 52, 2, 4, '#f0f0f0'); R(49, 51, 6, 2, '#603010'); // Kaffeetasse
+  }
+
+  // ---------- Unterleiste: Fernseher, Werte, Familie ----------
+  UI.tvChan = 0;
+  UI.bar = function () {
+    const c = $('bar'); const s = S(); if (!c || !s) return;
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+    const R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+    const T = (txt, x, y, col, size, al) => { g.font = 'bold ' + (size || 8) + 'px monospace'; g.textAlign = al || 'left'; g.textBaseline = 'top'; g.fillStyle = '#000'; g.fillText(txt, x + 1, y + 1); g.fillStyle = col; g.fillText(txt, x, y); };
+    R(0, 0, 480, 64, '#3a3a50'); R(0, 0, 480, 1, '#9a9ab8');
+    const ch = allChannels()[UI.tvChan];
+    R(4, 4, 132, 56, '#6a4a2a'); R(8, 8, 104, 48, '#000');
+    let f = null;
+    if (UI.tvChan === 0) { const p = s.plan[20]; f = p && p.film ? sim().filmById(s, p.film) : null; }
+    else { const r = s.rivals[UI.tvChan - 1]; f = r.plan[20] ? r.films.find(x => x.id === r.plan[20]) : null; }
+    if (f) { const col = SC.GENRES[f.genre].col; for (let y = 8; y < 56; y += 3) R(8, y, 104, 2, y % 6 ? col : '#000'); g.globalAlpha = 0.6; R(8, 8, 104, 48, '#000'); g.globalAlpha = 1; }
+    else ['#fff', '#ff0', '#0ff', '#0f0', '#f0f', '#f00', '#00f'].forEach((col, i) => R(8 + i * 15, 8, 15, 36, col));
+    T(ch.name, 11, 10, ch.col, 8); T('HEUTE 20 UHR', 11, 20, '#fff', 7);
+    T(f ? (f.title.length > 17 ? f.title.slice(0, 16) + '…' : f.title) : 'Testbild', 11, 32, '#fff', 7);
+    if (f) T(SC.GENRES[f.genre].name + ' Q' + f.q, 11, 42, '#ccc', 7);
+    R(116, 10, 16, 6, '#202020'); R(118, 20, 12, 12, '#888'); R(118, 36, 12, 12, '#888');
+    T('+', 121, 21, '#000', 9); T('-', 121, 37, '#000', 9);
+    T(clock(s.minute) + ' UHR', 146, 6, '#ff8800', 12);
+    T('Tag ' + s.day, 146, 22, '#fff', 8);
+    T(money(s.money), 146, 33, s.money < 0 ? '#ff6060' : '#80ff80', 9);
+    const fc = sim().forecast(s, 20);
+    T('20 Uhr ca. ' + viewers(fc), 146, 46, '#9cf', 8);
+    R(258, 8, 32, 48, '#202030'); const hv = s.heart;
+    R(262, 52 - Math.round(hv * 0.32), 24, Math.round(hv * 0.32), '#ff3070');
+    T('♥', 268, 10, '#ff3070', 12); T(String(hv), 274, 42, '#fff', 8, 'center');
+    let x0 = 296; const iv = [s.image].concat(s.rivals.map(r => r.image)); const ac = allChannels();
+    iv.forEach((v, i) => { const w = Math.round(v * 0.38); R(x0, 10, w, 8, ac[i].col); x0 += w; });
+    T('IMAGE', 296, 22, '#fff', 7); T(String(s.image), 296, 32, SC.PLAYER.col, 10);
+    R(338, 4, 138, 56, '#6a4a2a'); R(342, 8, 130, 48, '#c8a878');
+    R(342, 8, 130, 4, '#a08060'); R(446, 16, 22, 18, '#8090a0'); R(448, 18, 18, 14, f && UI.tvChan === 0 ? SC.GENRES[f.genre].col : '#40c0ff');
+    R(350, 38, 84, 12, '#a03030'); R(346, 32, 6, 18, '#802020'); R(432, 32, 6, 18, '#802020'); R(350, 32, 84, 8, '#b04040');
+    const share = Math.max(0, Math.min(1, fc / (SC.AUDIENCE[20] * 0.45)));
+    const n = Math.max(0, Math.min(4, Math.round(share * 4)));
+    const fam = [['#e0b080', '#603010', '#4060c0'], ['#f0c090', '#c08020', '#c04080'], ['#e0b080', '#402010', '#40a040'], ['#f0d0a0', '#ffe060', '#e08020']];
+    for (let i = 0; i < 4; i++) {
+      if (i >= n) continue;
+      const fx = 358 + i * 19, dy = i < 2 ? 0 : 4;
+      R(fx, 20 + dy, 8, 8, fam[i][0]); R(fx, 18 + dy, 8, 3, fam[i][1]); R(fx - 1, 28 + dy, 10, 10, fam[i][2]); R(fx + 2, 23 + dy, 1, 1, '#000'); R(fx + 5, 23 + dy, 1, 1, '#000');
+    }
+    if (n === 0) T('niemand schaut …', 352, 18, '#604020', 7);
+    T('FAMILIE SOFA', 392, 51, '#402010', 6, 'center');
+  };
 
   // ---------- Sendeabend ----------
   UI.overlayOpen = () => !!UI.overlay;
@@ -280,7 +377,7 @@
   }
   function addTvRow(hr, ch) {
     const max = Math.max.apply(null, hr.views);
-    let r = '<tr><td>' + hr.h + ':00</td>';
+    let r = '<tr><td>' + hh(hr.h) + (hr.news ? '<div class="small dim">+News</div>' : '') + '</td>';
     hr.views.forEach((v, i) => { r += '<td' + (v === max ? ' class="best"' : '') + '><div class="small">' + esc(hr.titles[i]) + '</div><span class="vbar" style="width:' + Math.round(v / 40) + 'px;background:' + ch[i].col + '"></span> ' + viewers(v) + '</td>'; });
     r += '<td>' + (hr.ad ? (hr.ad.ok ? '<span class="good">✔ ' + esc(hr.ad.sponsor) + ' +' + money(hr.ad.pay) + '</span>' : '<span class="bad">✘ ' + esc(hr.ad.sponsor) + ' (zu wenig)</span>') : '–') + '</td></tr>';
     $('tvtab').insertAdjacentHTML('beforeend', r);
@@ -301,7 +398,7 @@
       g.fillStyle = '#000'; g.fillRect(30, 40, 100, 30); g.fillStyle = col; g.fillRect(32, 42, 96, 26);
     }
     g.fillStyle = '#ff8800'; g.font = 'bold 9px monospace'; g.textAlign = 'left'; g.fillText('W7', 4, 10);
-    $('tvinfo').innerHTML = '<div class="big">' + hr.h + ':00 Uhr</div><div>' + esc(hr.titles[0]) + '</div><div class="dim">' + (gid ? SC.GENRES[gid].name : 'kein Programm') + '</div><div>' + viewers(hr.views[0]) + ' schauen zu</div>';
+    $('tvinfo').innerHTML = '<div class="big">' + hh(hr.h) + ' Uhr</div><div>' + esc(hr.titles[0]) + '</div><div class="dim">' + (gid ? SC.GENRES[gid].name : 'kein Programm') + '</div><div>' + viewers(hr.views[0]) + ' schauen zu</div><div class="small">Image ' + hr.imgs.join(' / ') + '</div>';
   }
 
   function showBilanz() {
@@ -311,26 +408,31 @@
     h += '<table><tr><th>Platz</th><th>Sender</th><th>Zuschauer gesamt</th></tr>';
     r.order.forEach((ci, k) => { h += '<tr><td>' + (k + 1) + '.</td><td style="color:' + ch[ci].col + '">' + esc(ch[ci].name) + '</td><td>' + viewers(r.totals[ci]) + '</td></tr>'; });
     h += '</table><table class="money"><tr><td>Werbeeinnahmen (' + r.spotsOk + ' Spots, ' + r.spotsFail + ' geplatzt)</td><td class="good">' + money(r.income) + '</td></tr>' +
+      '<tr><td>Grundeinnahmen (Kabelgebühren)</td><td class="good">' + money(r.baseIncome) + '</td></tr>' +
       '<tr><td>Vertragsstrafen</td><td class="bad">' + money(-r.penalties) + '</td></tr>' +
       '<tr><td>Betriebskosten und Filmlizenzen</td><td class="bad">' + money(-r.costs) + '</td></tr>' +
+      '<tr><td>Agentur-Abos</td><td class="bad">' + money(-r.fees) + '</td></tr>' +
       '<tr><td>Zinsen</td><td class="bad">' + money(-r.interest) + '</td></tr>' +
       '<tr><td class="dim">Heute schon bezahlt: Nachrichten</td><td class="dim">' + money(-r.newsCost) + '</td></tr>' +
       (r.autoCredit ? '<tr><td>Automatischer Kredit der Bank</td><td>' + money(r.autoCredit) + '</td></tr>' : '') +
       '<tr><th>Kontostand</th><th>' + money(s.money) + '</th></tr></table>';
     if (r.finished.length) h += '<p class="good">Erfüllt: ' + r.finished.map(esc).join(', ') + '</p>';
     if (r.failed.length) h += '<p class="bad">Geplatzt: ' + r.failed.map(esc).join(', ') + '</p>';
-    h += '<div class="chefin"><canvas id="chefin-b" width="64" height="64"></canvas><div><p class="say">„' + esc(r.chefin) + '“</p><p>Laune der Chefin: ' + s.mood + ' (' + (r.moodDelta >= 0 ? '+' : '') + r.moodDelta + ')</p></div></div>';
+    const sg = v => (v >= 0 ? '+' : '') + v;
+    h += '<p>Image: ' + imgBar(s) + ' ' + s.image + ' (' + sg(r.imageDelta) + ') · <span class="heart">♥</span> ' + s.heart + ' (' + sg(r.heartDelta) + ')' + (r.culture ? ' · ' + r.culture + ' Kulturstunden' : '') + '</p>';
+    h += '<div class="chefin"><canvas id="chefin-b" width="64" height="64"></canvas><div><p class="say">' + esc(SC.BOSS.name) + ': „' + esc(r.boss) + '“</p><p>Laune des Chefs: ' + s.mood + ' (' + sg(r.moodDelta) + ')</p></div></div>';
     if (s.over) h += endText(s);
     else h += '<p><button id="btn-next">Nächster Tag</button></p>';
     h += '</div>';
     openOverlay('bilanz', h);
-    drawChefin($('chefin-b'), s.mood);
+    drawBoss($('chefin-b'), s.mood);
     if ($('btn-next')) $('btn-next').onclick = () => { sim().nextDay(s); sim().save(s); SC.building.reset(); closeOverlay(); showLog(); toast('Tag ' + s.day + ' beginnt. Neue Filme, Werbung und Nachrichten sind da.'); };
     if ($('btn-new2')) $('btn-new2').onclick = () => UI.newGame();
   }
   function endText(s) {
-    const t = { sieg: ['SIEG!', 'Die Chefin ist begeistert und macht dich zum Intendanten von ' + SC.PLAYER.name + '.'],
-      gefeuert: ['GEFEUERT', 'Die Chefin hat genug. Du räumst deinen Schreibtisch.'],
+    const t = { sieg: ['HOCHZEIT!', SC.LOVE.name + ' sagt Ja! Ihr fahrt auf Traumreise, und ' + SC.PLAYER.name + ' ist der Sender der Stunde.'],
+      gefeuert: ['GEFEUERT', SC.BOSS.name + ' hat genug: ' + (s.image < 8 ? 'Das Image ist am Boden.' : 'Seine Laune ist bei null.') + ' Du räumst deinen Schreibtisch.'],
+      liebe: ['ZU SPÄT', SC.LOVE.name + ' hat sich für den Chef von ' + (s.rivals.find(r => r.heart >= 100) || s.rivals[0]).name + ' entschieden.'],
       pleite: ['PLEITE', 'Der Kreditrahmen ist ausgeschöpft und das Konto im Minus. Die Bank dreht den Saft ab.'] }[s.over];
     return '<div class="end ' + (s.over === 'sieg' ? 'good' : 'bad') + '"><h2>' + t[0] + '</h2><p>' + t[1] + '</p><p>Gespielt: ' + s.day + ' Tage · Filme gekauft: ' + s.stats.bought + ' · Werbespots: ' + s.stats.spots + ' · Bester Abend: ' + viewers(s.stats.best) + '</p></div><p><button id="btn-new2">Neues Spiel</button></p>';
   }
@@ -339,7 +441,7 @@
   UI.showTitle = function () {
     const sv = sim().load();
     let h = '<div class="box title"><canvas id="logo" width="320" height="90"></canvas>';
-    h += '<p class="big">Du leitest den kleinen Fernsehsender <b style="color:#ffcc00">' + SC.PLAYER.name + '</b>. Kauf Filme, verkauf Werbung, schlag Blitz TV und Kanal Krawall bei der Quote und bring die Chefin zum Strahlen.</p>';
+    h += '<p class="big">Du leitest den kleinen Fernsehsender <b style="color:#ffcc00">' + SC.PLAYER.name + '</b>. Kauf und ersteigere Filme, verkauf Werbung, schlag Blitz TV und Kanal Krawall im Image-Kampf, überlebe den grantigen ' + SC.BOSS.name + ' und gewinn das Herz von ' + SC.LOVE.name + '.</p>';
     h += '<p>' + (sv && !sv.over ? '<button id="t-cont">Weiterspielen (Tag ' + sv.day + ')</button> ' : '') + '<button id="t-new">Neues Spiel</button></p>';
     h += '<p class="dim">Klick im Hochhaus auf eine Tür oder nutze die Raumknöpfe unter dem Bild. Der Spielstand wird im Browser gespeichert.</p>';
     h += '<p class="dim small">Inspiriert von Mad TV (1991). Eigenständiges Fanprojekt mit eigener Grafik und eigenen Texten, ohne Original-Inhalte. Version ' + SC.VERSION + '.</p></div>';
@@ -356,7 +458,7 @@
     if (UI.evTimer) { clearInterval(UI.evTimer); UI.evTimer = null; }
     if (UI.room) UI.closeRoom();
     SC.S = sim().newGame(seed || (Date.now() & 0x7fffffff)); sim().save(S()); afterLoad();
-    toast('Neues Spiel! Schau zuerst ins Büro (1. Etage) und zur Werbeagentur (2. Etage).');
+    toast('Neues Spiel! Schau zuerst ins Büro (1. Etage) und zur Werbeagentur (2. Etage). Klick auf den linken Fernseher unten schaltet die Sender um.');
   };
   function drawLogo(c) {
     if (!c) return; const g = c.getContext('2d');
@@ -385,6 +487,7 @@
     $('btn-speed').onclick = () => { UI.speed = UI.speed === 1 ? 2 : UI.speed === 2 ? 4 : 1; };
     $('btn-evening').onclick = () => UI.startEvening();
     $('btn-menu').onclick = showMenu;
+    $('bar').addEventListener('click', e => { const r = $('bar').getBoundingClientRect(); const x = (e.clientX - r.left) * 480 / r.width; if (x < 140) UI.tvChan = (UI.tvChan + 1) % 3; });
     const cv = $('cv');
     cv.addEventListener('mousemove', e => {
       const [x, y] = SC.building.toLogical(e); const p = SC.building.pick(x, y);

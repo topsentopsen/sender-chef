@@ -25,6 +25,19 @@ const out = process.env.SHOTS || '/workspace/sender-chef';
   const buyBtn = await page.$('#room button[data-act="buy"]:not([disabled])');
   if (buyBtn) await buyBtn.click();
   const after = await page.evaluate(() => window.SC.S.films.length);
+  const bidBtn = await page.$('#room button[data-act="bid"]:not([disabled])');
+  if (bidBtn) await bidBtn.click();
+  const auction = await page.evaluate(() => window.SC.S.auction.bidder);
+  await page.screenshot({ path: out + '-5-filmhandel.png' });
+  // Kiosk: Blumen kaufen, bei Lena überreichen
+  await page.click('#rooms button[data-room="kiosk"]');
+  await page.waitForFunction(() => window.SC.ui.room === 'kiosk', { timeout: 20000 });
+  await page.click('#room button[data-act="gift"]');
+  await page.click('#rooms button[data-room="lena"]');
+  await page.waitForFunction(() => window.SC.ui.room === 'lena', { timeout: 30000 });
+  await page.click('#room button[data-act="give"]');
+  const heart = await page.evaluate(() => window.SC.S.heart);
+  await page.screenshot({ path: out + '-6-lena.png' });
   // Werbung unterschreiben
   await page.click('#rooms button[data-room="werbung"]');
   await page.waitForFunction(() => window.SC.ui.room === 'werbung', { timeout: 20000 });
@@ -54,7 +67,7 @@ const out = process.env.SHOTS || '/workspace/sender-chef';
   await page.reload({ waitUntil: 'load' });
   await new Promise(r => setTimeout(r, 500));
   const cont = await page.$('#t-cont');
-  console.log(JSON.stringify({ filmsBefore: before, filmsAfter: after, day1, dayAfter: day, continueButton: !!cont, errors: errs }, null, 1));
+  console.log(JSON.stringify({ filmsBefore: before, filmsAfter: after, auctionBidder: auction, heart, day1, dayAfter: day, continueButton: !!cont, errors: errs }, null, 1));
   await browser.close();
   process.exit(errs.length ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(2); });

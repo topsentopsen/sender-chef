@@ -7,6 +7,8 @@
     const s = SC.S, UI = SC.ui;
     if (s && s.phase === 'tag' && !UI.paused && !UI.overlayOpen()) {
       s.minute += dt * SC.MIN_PER_SEC * UI.speed;
+      const ev = SC.sim.auctionTick(s);
+      if (ev) { UI.toast(ev, s.auction && s.auction.bidder > 0); UI.refresh(); }
       if (s.minute >= SC.EVENING) UI.startEvening();
     }
     if (!UI.overlayOpen()) SC.building.update(dt, UI.openRoom);
